@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
 import { UploadCloud, FileSpreadsheet, CheckCircle, AlertCircle, X } from "lucide-react";
+import apiClient from "../api/client";
 
 type UploadType = "participation" | "nps" | "praise" | "complaint";
 
@@ -26,22 +27,72 @@ const UPLOAD_LABELS: Record<UploadType, { label: string; desc: string; cols: str
   },
 };
 
+interface UploadResult {
+  success: boolean;
+  inserted: number;
+  updated: number;
+  errors: Array<{ row: number; column: string; message: string }>;
+}
+
 export default function UploadPage() {
   const [activeType, setActiveType] = useState<UploadType>("participation");
   const [dragOver, setDragOver] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
-  const [status, setStatus] = useState<"idle" | "ready" | "success" | "error">("idle");
+  const [file, setFile] = useState<File | null>(null);
+  const [status, setStatus] = useState<"idle" | "ready" | "uploading" | "success" | "error">("idle");
+  const [result, setResult] = useState<UploadResult | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const info = UPLOAD_LABELS[activeType];
 
-  function handleFile(file: File) {
-    if (!file.name.match(/\.(xlsx|xls)$/i)) {
+  function handleFile(f: File) {
+    if (!f.name.match(/\.(xlsx|xls)$/i)) {
       setStatus("error");
+      setErrorMsg(".xlsx 또는 .xls 파일만 업로드 가능합니다.");
       setFileName(null);
+      setFile(null);
       return;
     }
-    setFileName(file.name);
+    setFileName(f.name);
+    setFile(f);
     setStatus("ready");
+    setResult(null);
+    setErrorMsg(null);
+  }
+
+  function reset() {
+    setFileName(null);
+    setFile(null);
+    setStatus("idle");
+    setResult(null);
+    setErrorMsg(null);
+    if (inputRef.current) inputRef.current.value = "";
+  }
+
+  async function handleUpload() {
+    if (!file) return;
+    setStatus("uploading");
+    setResult(null);
+    setErrorMsg(null);
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const { data } = await apiClient.post<UploadResult>(
+        `/upload/${activeType}`,
+        formData,
+        { headers: { "Content-Type": "multipart/form-data" } }
+      );
+      setResult(data);
+      setStatus(data.success ? "success" : "error");
+      if (!data.success && data.errors.length > 0) {
+        setErrorMsg(`${data.errors.length}개 행에 오류가 있습니다.`);
+      }
+    } catch (err: any) {
+      setStatus("error");
+      setErrorMsg(err?.response?.data?.detail ?? "업로드 중 오류가 발생했습니다.");
+    }
   }
 
   return (
@@ -51,7 +102,7 @@ export default function UploadPage() {
         {(Object.keys(UPLOAD_LABELS) as UploadType[]).map((type) => (
           <button
             key={type}
-            onClick={() => { setActiveType(type); setFileName(null); setStatus("idle"); }}
+            onClick={() => { setActiveType(type); reset(); }}
             className={`px-5 py-2 rounded-xl text-sm font-medium transition-all ${
               activeType === type
                 ? "bg-violet-600 text-white shadow"
@@ -80,8 +131,8 @@ export default function UploadPage() {
             onDrop={(e) => {
               e.preventDefault();
               setDragOver(false);
-              const file = e.dataTransfer.files[0];
-              if (file) handleFile(file);
+              const f = e.dataTransfer.files[0];
+              if (f) handleFile(f);
             }}
             onClick={() => inputRef.current?.click()}
             className={`border-2 border-dashed rounded-2xl p-10 text-center cursor-pointer transition-all ${
@@ -98,8 +149,8 @@ export default function UploadPage() {
               accept=".xlsx,.xls"
               className="hidden"
               onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) handleFile(file);
+                const f = e.target.files?.[0];
+                if (f) handleFile(f);
               }}
             />
 
@@ -120,17 +171,31 @@ export default function UploadPage() {
             )}
           </div>
 
-          {/* 상태 메시지 */}
-          {status === "success" && (
-            <div className="flex items-center gap-2 text-green-600 bg-green-50 rounded-xl px-4 py-3 text-sm">
-              <CheckCircle size={16} />
-              업로드 성공! 데이터가 반영되었습니다.
+          {/* 결과 메시지 */}
+          {status === "success" && result && (
+            <div className="flex items-start gap-2 text-green-600 bg-green-50 rounded-xl px-4 py-3 text-sm">
+              <CheckCircle size={16} className="mt-0.5 flex-shrink-0" />
+              <span>
+                업로드 성공! 신규 {result.inserted}건 삽입,
+                기존 {result.updated}건 업데이트
+              </span>
             </div>
           )}
           {status === "error" && (
-            <div className="flex items-center gap-2 text-red-500 bg-red-50 rounded-xl px-4 py-3 text-sm">
-              <AlertCircle size={16} />
-              .xlsx 또는 .xls 파일만 업로드 가능합니다.
+            <div className="flex items-start gap-2 text-red-500 bg-red-50 rounded-xl px-4 py-3 text-sm">
+              <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
+              <span>{errorMsg ?? "오류가 발생했습니다."}</span>
+            </div>
+          )}
+
+          {/* 행별 에러 목록 */}
+          {result?.errors && result.errors.length > 0 && (
+            <div className="bg-red-50 rounded-xl px-4 py-3 space-y-1 max-h-40 overflow-y-auto">
+              {result.errors.map((e, i) => (
+                <p key={i} className="text-xs text-red-500">
+                  {e.row}행 [{e.column}]: {e.message}
+                </p>
+              ))}
             </div>
           )}
 
@@ -138,17 +203,14 @@ export default function UploadPage() {
           <div className="flex gap-3">
             <button
               disabled={status !== "ready"}
-              onClick={() => {
-                // TODO: 실제 API 연동
-                setStatus("success");
-              }}
+              onClick={handleUpload}
               className="flex-1 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 disabled:bg-gray-200 disabled:text-gray-400 text-white text-sm font-semibold transition-colors"
             >
-              업로드
+              {status === "uploading" ? "업로드 중..." : "업로드"}
             </button>
             {fileName && (
               <button
-                onClick={() => { setFileName(null); setStatus("idle"); }}
+                onClick={reset}
                 className="p-2.5 rounded-xl border border-gray-200 hover:bg-gray-50 text-gray-400 transition-colors"
               >
                 <X size={16} />
@@ -162,10 +224,7 @@ export default function UploadPage() {
           <h3 className="text-sm font-bold text-gray-700 mb-4">업로드 양식 컬럼</h3>
           <div className="space-y-2">
             {info.cols.map((col, i) => (
-              <div
-                key={col}
-                className="flex items-center gap-3 px-3 py-2 rounded-xl bg-gray-50"
-              >
+              <div key={col} className="flex items-center gap-3 px-3 py-2 rounded-xl bg-gray-50">
                 <span className="w-5 h-5 rounded-full bg-violet-100 text-violet-600 text-xs font-bold flex items-center justify-center flex-shrink-0">
                   {i + 1}
                 </span>

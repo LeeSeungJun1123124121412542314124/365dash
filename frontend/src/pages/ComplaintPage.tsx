@@ -5,33 +5,20 @@ import {
 } from "recharts";
 import { ThumbsDown } from "lucide-react";
 import ScoreCard from "../components/ScoreCard";
-import FilterBar from "../components/FilterBar";
+import FilterBar, { type FilterValue } from "../components/FilterBar";
 import PeriodSelector from "../components/PeriodSelector";
-
-const OVERVIEW_DATA = [
-  { month: "10월", 기준값: 22, 필터값: 18 },
-  { month: "11월", 기준값: 19, 필터값: 15 },
-  { month: "12월", 기준값: 24, 필터값: 20 },
-  { month: "1월",  기준값: 17, 필터값: 13 },
-  { month: "2월",  기준값: 15, 필터값: 11 },
-  { month: "3월",  기준값: 14, 필터값: 10 },
-];
-
-// 불만 키워드 목 데이터
-const KEYWORD_DATA = [
-  { 연도: 2025, 월: 3, 지점명: "강남본점",  주차: 3, "안내·응대부족": 1, 대기관련: 2, 불친절: 0, 시스템불만: 1, 개인정보: 0, 환경불만: 1, 기타: 2 },
-  { 연도: 2025, 월: 3, 지점명: "서울병원",  주차: 1, "안내·응대부족": 3, 대기관련: 1, 불친절: 2, 시스템불만: 0, 개인정보: 1, 환경불만: 0, 기타: 1 },
-  { 연도: 2025, 월: 3, 지점명: "노원",      주차: 0, "안내·응대부족": 2, 대기관련: 3, 불친절: 1, 시스템불만: 2, 개인정보: 0, 환경불만: 1, 기타: 0 },
-  { 연도: 2025, 월: 3, 지점명: "분당",      주차: 2, "안내·응대부족": 0, 대기관련: 1, 불친절: 0, 시스템불만: 3, 개인정보: 1, 환경불만: 2, 기타: 1 },
-  { 연도: 2025, 월: 3, 지점명: "수원",      주차: 1, "안내·응대부족": 1, 대기관련: 0, 불친절: 2, 시스템불만: 1, 개인정보: 0, 환경불만: 0, 기타: 3 },
-];
-
-const KEYWORD_COLS = ["주차", "안내·응대부족", "대기관련", "불친절", "시스템불만", "개인정보", "환경불만", "기타"] as const;
+import { useComplaintSummary, useComplaintKeywords } from "../api/hooks";
+import { defaultFilter, periodToMonths, toChartData } from "../lib/chartUtils";
 
 const PERIOD_OPTIONS = [
   { label: "3개월", value: "3m" },
   { label: "6개월", value: "6m" },
 ];
+
+const KEYWORD_COLS = [
+  "주차", "안내·응대부족", "대기관련", "불친절",
+  "시스템불만", "개인정보", "환경불만", "기타",
+] as const;
 
 function CustomTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
@@ -40,7 +27,7 @@ function CustomTooltip({ active, payload, label }: any) {
       <p className="font-semibold text-gray-700 mb-1">{label}</p>
       {payload.map((p: any) => (
         <p key={p.name} style={{ color: p.color }}>
-          {p.name}: <span className="font-bold">{p.value}건</span>
+          {p.name}: <span className="font-bold">{p.value ?? "—"}건</span>
         </p>
       ))}
     </div>
@@ -49,8 +36,28 @@ function CustomTooltip({ active, payload, label }: any) {
 
 export default function ComplaintPage() {
   const [tab, setTab] = useState<"overview" | "keywords">("overview");
+  const [filter, setFilter] = useState<FilterValue>(defaultFilter());
   const [period, setPeriod] = useState("6m");
   const [showBaseline, setShowBaseline] = useState(true);
+
+  const months = periodToMonths(period);
+
+  const { data: summaryData, isLoading: summaryLoading } = useComplaintSummary({
+    months,
+    group_id: filter.groupId,
+    branch_id: filter.branchId,
+  });
+
+  const { data: keywordData, isLoading: keywordLoading } = useComplaintKeywords({
+    year: tab === "keywords" ? filter.year : null,
+    month: tab === "keywords" ? filter.month : null,
+    group_id: filter.groupId,
+    branch_id: filter.branchId,
+  });
+
+  const scorecards = summaryData?.scorecards ?? {};
+  const chartData = toChartData(summaryData?.trend ?? []);
+  const keywordRows: any[] = keywordData?.rows ?? [];
 
   return (
     <div className="space-y-5">
@@ -61,9 +68,7 @@ export default function ComplaintPage() {
             key={t}
             onClick={() => setTab(t)}
             className={`px-5 py-2 rounded-xl text-sm font-medium transition-all ${
-              tab === t
-                ? "bg-violet-600 text-white shadow"
-                : "text-gray-500 hover:text-gray-700"
+              tab === t ? "bg-violet-600 text-white shadow" : "text-gray-500 hover:text-gray-700"
             }`}
           >
             {t === "overview" ? "불만 현황" : "키워드"}
@@ -73,13 +78,13 @@ export default function ComplaintPage() {
 
       {tab === "overview" && (
         <>
-          <FilterBar />
+          <FilterBar value={filter} onChange={setFilter} />
 
           <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-            <ScoreCard title="기준값 불만총계" value="111" unit="건" change={-5.2} icon={ThumbsDown} iconColor="bg-red-100" />
-            <ScoreCard title="필터값 불만총계" value="87"  unit="건" change={-9.4} icon={ThumbsDown} iconColor="bg-orange-100" />
-            <ScoreCard title="수술 불만"       value="28"  unit="건" change={2.1}  icon={ThumbsDown} iconColor="bg-amber-100" />
-            <ScoreCard title="람스+시술 불만"  value="39"  unit="건" change={-14}  icon={ThumbsDown} iconColor="bg-yellow-50" />
+            <ScoreCard title="기준값 불만총계" value={scorecards.base_total?.value ?? null}   unit="건" icon={ThumbsDown} iconColor="bg-red-100"    loading={summaryLoading} />
+            <ScoreCard title="필터값 불만총계" value={scorecards.filter_total?.value ?? null} unit="건" change={scorecards.filter_total?.change ?? undefined} icon={ThumbsDown} iconColor="bg-orange-100" loading={summaryLoading} />
+            <ScoreCard title="수술 불만"       value={scorecards.surgery?.value ?? null}      unit="건" icon={ThumbsDown} iconColor="bg-amber-100"   loading={summaryLoading} />
+            <ScoreCard title="람스+시술 불만"  value={scorecards.lams_surgery?.value ?? null} unit="건" icon={ThumbsDown} iconColor="bg-yellow-50"   loading={summaryLoading} />
           </div>
 
           <div className="card p-5">
@@ -103,7 +108,7 @@ export default function ComplaintPage() {
               </div>
             </div>
             <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={OVERVIEW_DATA} margin={{ top: 4, right: 4, left: -20, bottom: 0 }} barGap={4} barCategoryGap="30%">
+              <BarChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }} barGap={4} barCategoryGap="30%">
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
                 <XAxis dataKey="month" tick={{ fontSize: 12, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 12, fill: "#9ca3af" }} axisLine={false} tickLine={false} unit="건" />
@@ -121,49 +126,55 @@ export default function ComplaintPage() {
 
       {tab === "keywords" && (
         <>
-          <FilterBar showNpsLevel={false} />
+          <FilterBar value={filter} onChange={setFilter} showNpsLevel={false} />
 
           <div className="card overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-100">
               <h3 className="text-sm font-bold text-gray-700">불만 키워드 현황</h3>
               <p className="text-xs text-gray-400 mt-0.5">8개 카테고리별 건수</p>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50 border-b border-gray-100">
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">연도</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">월</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">지점명</th>
-                    {KEYWORD_COLS.map((col) => (
-                      <th key={col} className="px-4 py-3 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">
-                        {col}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {KEYWORD_DATA.map((row, i) => (
-                    <tr key={i} className="border-b border-gray-50 hover:bg-violet-50/40 transition-colors">
-                      <td className="px-4 py-3 text-gray-600">{row.연도}</td>
-                      <td className="px-4 py-3 text-gray-600">{row.월}월</td>
-                      <td className="px-4 py-3 font-medium text-gray-700">{row.지점명}</td>
+            {keywordLoading ? (
+              <div className="p-8 text-center text-sm text-gray-400">불러오는 중...</div>
+            ) : keywordRows.length === 0 ? (
+              <div className="p-8 text-center text-sm text-gray-400">데이터가 없습니다.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-100">
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">연도</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">월</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">지점명</th>
                       {KEYWORD_COLS.map((col) => (
-                        <td key={col} className="px-4 py-3 text-center">
-                          {(row as any)[col] > 0 ? (
-                            <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-red-100 text-red-600 text-xs font-semibold">
-                              {(row as any)[col]}
-                            </span>
-                          ) : (
-                            <span className="text-gray-300">—</span>
-                          )}
-                        </td>
+                        <th key={col} className="px-4 py-3 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">
+                          {col}
+                        </th>
                       ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {keywordRows.map((row, i) => (
+                      <tr key={i} className="border-b border-gray-50 hover:bg-violet-50/40 transition-colors">
+                        <td className="px-4 py-3 text-gray-600">{row.year}</td>
+                        <td className="px-4 py-3 text-gray-600">{row.month}월</td>
+                        <td className="px-4 py-3 font-medium text-gray-700">{row.branch_name}</td>
+                        {KEYWORD_COLS.map((col) => (
+                          <td key={col} className="px-4 py-3 text-center">
+                            {(row[col] ?? 0) > 0 ? (
+                              <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-red-100 text-red-600 text-xs font-semibold">
+                                {row[col]}
+                              </span>
+                            ) : (
+                              <span className="text-gray-300">—</span>
+                            )}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </>
       )}

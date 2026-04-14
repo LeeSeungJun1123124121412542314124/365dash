@@ -5,17 +5,10 @@ import {
 } from "recharts";
 import { Star } from "lucide-react";
 import ScoreCard from "../components/ScoreCard";
-import FilterBar from "../components/FilterBar";
+import FilterBar, { type FilterValue } from "../components/FilterBar";
 import PeriodSelector from "../components/PeriodSelector";
-
-const MOCK_DATA = [
-  { month: "10월", 기준값: 48, 필터값: 42 },
-  { month: "11월", 기준값: 55, 필터값: 50 },
-  { month: "12월", 기준값: 52, 필터값: 47 },
-  { month: "1월",  기준값: 61, 필터값: 55 },
-  { month: "2월",  기준값: 67, 필터값: 60 },
-  { month: "3월",  기준값: 70, 필터값: 65 },
-];
+import { usePraiseSummary } from "../api/hooks";
+import { defaultFilter, periodToMonths, toChartData } from "../lib/chartUtils";
 
 const PERIOD_OPTIONS = [
   { label: "3개월", value: "3m" },
@@ -29,7 +22,7 @@ function CustomTooltip({ active, payload, label }: any) {
       <p className="font-semibold text-gray-700 mb-1">{label}</p>
       {payload.map((p: any) => (
         <p key={p.name} style={{ color: p.color }}>
-          {p.name}: <span className="font-bold">{p.value}건</span>
+          {p.name}: <span className="font-bold">{p.value ?? "—"}건</span>
         </p>
       ))}
     </div>
@@ -37,19 +30,59 @@ function CustomTooltip({ active, payload, label }: any) {
 }
 
 export default function PraisePage() {
+  const [filter, setFilter] = useState<FilterValue>(defaultFilter());
   const [period, setPeriod] = useState("6m");
   const [showBaseline, setShowBaseline] = useState(true);
 
+  const months = periodToMonths(period);
+  const { data, isLoading } = usePraiseSummary({
+    months,
+    group_id: filter.groupId,
+    branch_id: filter.branchId,
+  });
+
+  const scorecards = data?.scorecards ?? {};
+  const chartData = toChartData(data?.trend ?? []);
+
   return (
     <div className="space-y-5">
-      <FilterBar />
+      <FilterBar value={filter} onChange={setFilter} />
 
       {/* 스코어카드 */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-        <ScoreCard title="기준값 칭찬총계" value="353" unit="건" change={4.5}  icon={Star} iconColor="bg-amber-100" />
-        <ScoreCard title="필터값 칭찬총계" value="319" unit="건" change={2.8}  icon={Star} iconColor="bg-yellow-100" />
-        <ScoreCard title="수술 칭찬"       value="98"  unit="건" change={6.1}  icon={Star} iconColor="bg-orange-100" />
-        <ScoreCard title="람스+시술 칭찬"  value="141" unit="건" change={-1.2} icon={Star} iconColor="bg-red-50" />
+        <ScoreCard
+          title="기준값 칭찬총계"
+          value={scorecards.base_total?.value ?? null}
+          unit="건"
+          icon={Star}
+          iconColor="bg-amber-100"
+          loading={isLoading}
+        />
+        <ScoreCard
+          title="필터값 칭찬총계"
+          value={scorecards.filter_total?.value ?? null}
+          unit="건"
+          change={scorecards.filter_total?.change ?? undefined}
+          icon={Star}
+          iconColor="bg-yellow-100"
+          loading={isLoading}
+        />
+        <ScoreCard
+          title="수술 칭찬"
+          value={scorecards.surgery?.value ?? null}
+          unit="건"
+          icon={Star}
+          iconColor="bg-orange-100"
+          loading={isLoading}
+        />
+        <ScoreCard
+          title="람스+시술 칭찬"
+          value={scorecards.lams_surgery?.value ?? null}
+          unit="건"
+          icon={Star}
+          iconColor="bg-red-50"
+          loading={isLoading}
+        />
       </div>
 
       {/* 칭찬 비교 차트 */}
@@ -74,7 +107,7 @@ export default function PraisePage() {
           </div>
         </div>
         <ResponsiveContainer width="100%" height={260}>
-          <BarChart data={MOCK_DATA} margin={{ top: 4, right: 4, left: -20, bottom: 0 }} barGap={4} barCategoryGap="30%">
+          <BarChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }} barGap={4} barCategoryGap="30%">
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
             <XAxis dataKey="month" tick={{ fontSize: 12, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
             <YAxis tick={{ fontSize: 12, fill: "#9ca3af" }} axisLine={false} tickLine={false} unit="건" />

@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import Layout from "./components/Layout";
@@ -9,6 +9,7 @@ import NpsPage from "./pages/NpsPage";
 import PraisePage from "./pages/PraisePage";
 import ComplaintPage from "./pages/ComplaintPage";
 import UploadPage from "./pages/UploadPage";
+import { getToken } from "./api/auth";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -19,13 +20,24 @@ const queryClient = new QueryClient({
   },
 });
 
+function RequireAuth({ children }: { children: React.ReactNode }) {
+  if (!getToken()) return <Navigate to="/login" replace />;
+  return <>{children}</>;
+}
+
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
-          <Route element={<Layout />}>
+          <Route
+            element={
+              <RequireAuth>
+                <Layout />
+              </RequireAuth>
+            }
+          >
             <Route path="/" element={<MainDashboardPage />} />
             <Route path="/participation" element={<ParticipationPage />} />
             <Route path="/nps" element={<NpsPage />} />

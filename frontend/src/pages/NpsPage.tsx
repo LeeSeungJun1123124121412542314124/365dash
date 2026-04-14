@@ -5,17 +5,10 @@ import {
 } from "recharts";
 import { TrendingUp } from "lucide-react";
 import ScoreCard from "../components/ScoreCard";
-import FilterBar from "../components/FilterBar";
+import FilterBar, { type FilterValue } from "../components/FilterBar";
 import PeriodSelector from "../components/PeriodSelector";
-
-const MOCK_DATA = [
-  { month: "10월", 필터값: 62, 기준값: 65 },
-  { month: "11월", 필터값: 67, 기준값: 66 },
-  { month: "12월", 필터값: 64, 기준값: 67 },
-  { month: "1월",  필터값: 70, 기준값: 68 },
-  { month: "2월",  필터값: 73, 기준값: 70 },
-  { month: "3월",  필터값: 76, 기준값: 72 },
-];
+import { useNpsSummary } from "../api/hooks";
+import { defaultFilter, periodToMonths, toChartData } from "../lib/chartUtils";
 
 const PERIOD_OPTIONS = [
   { label: "3개월", value: "3m" },
@@ -29,7 +22,7 @@ function CustomTooltip({ active, payload, label }: any) {
       <p className="font-semibold text-gray-700 mb-1">{label}</p>
       {payload.map((p: any) => (
         <p key={p.name} style={{ color: p.color }}>
-          {p.name}: <span className="font-bold">{p.value}점</span>
+          {p.name}: <span className="font-bold">{p.value ?? "—"}점</span>
         </p>
       ))}
     </div>
@@ -37,19 +30,66 @@ function CustomTooltip({ active, payload, label }: any) {
 }
 
 export default function NpsPage() {
+  const [filter, setFilter] = useState<FilterValue>(defaultFilter());
   const [period, setPeriod] = useState("6m");
   const [showBaseline, setShowBaseline] = useState(true);
+  const [npsLevel, setNpsLevel] = useState("전체");
+
+  const months = periodToMonths(period);
+  const { data, isLoading } = useNpsSummary({
+    months,
+    group_id: filter.groupId,
+    branch_id: filter.branchId,
+  });
+
+  const counts = data?.scorecard_counts ?? {};
+  const chartData = toChartData(data?.trend ?? []);
 
   return (
     <div className="space-y-5">
-      <FilterBar showNpsLevel />
+      <FilterBar
+        value={filter}
+        onChange={setFilter}
+        showNpsLevel
+        npsLevel={npsLevel}
+        onNpsLevelChange={setNpsLevel}
+      />
 
       {/* 스코어카드 */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-        <ScoreCard title="매우만족" value="320" unit="건"  change={5.2}  icon={TrendingUp} iconColor="bg-green-100" />
-        <ScoreCard title="만족"     value="480" unit="건"  change={1.8}  icon={TrendingUp} iconColor="bg-blue-100" />
-        <ScoreCard title="보통이하" value="124" unit="건"  change={-8.3} icon={TrendingUp} iconColor="bg-red-100" />
-        <ScoreCard title="이번 달 NPS" value="76" unit="점" change={3.1} icon={TrendingUp} iconColor="bg-violet-100" />
+        <ScoreCard
+          title="매우만족"
+          value={counts.very_satisfied?.count ?? null}
+          unit="건"
+          icon={TrendingUp}
+          iconColor="bg-green-100"
+          loading={isLoading}
+        />
+        <ScoreCard
+          title="만족"
+          value={counts.satisfied?.count ?? null}
+          unit="건"
+          icon={TrendingUp}
+          iconColor="bg-blue-100"
+          loading={isLoading}
+        />
+        <ScoreCard
+          title="보통이하"
+          value={counts.below_average?.count ?? null}
+          unit="건"
+          icon={TrendingUp}
+          iconColor="bg-red-100"
+          loading={isLoading}
+        />
+        <ScoreCard
+          title="이번 달 NPS"
+          value={counts.nps_score ?? null}
+          unit="점"
+          change={data?.scorecard?.change ?? undefined}
+          icon={TrendingUp}
+          iconColor="bg-violet-100"
+          loading={isLoading}
+        />
       </div>
 
       {/* NPS 추이 차트 */}
@@ -74,7 +114,7 @@ export default function NpsPage() {
           </div>
         </div>
         <ResponsiveContainer width="100%" height={260}>
-          <AreaChart data={MOCK_DATA} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+          <AreaChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
             <defs>
               <linearGradient id="grad-nps-base" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#2563eb" stopOpacity={0.12} />
@@ -87,13 +127,13 @@ export default function NpsPage() {
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
             <XAxis dataKey="month" tick={{ fontSize: 12, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fontSize: 12, fill: "#9ca3af" }} axisLine={false} tickLine={false} domain={[50, 90]} unit="점" />
+            <YAxis tick={{ fontSize: 12, fill: "#9ca3af" }} axisLine={false} tickLine={false} unit="점" />
             <Tooltip content={<CustomTooltip />} />
             <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12 }} />
             {showBaseline && (
-              <Area type="monotone" dataKey="기준값" stroke="#2563eb" strokeWidth={2.5} fill="url(#grad-nps-base)" dot={false} activeDot={{ r: 5 }} />
+              <Area type="monotone" dataKey="기준값" stroke="#2563eb" strokeWidth={2.5} fill="url(#grad-nps-base)" dot={false} activeDot={{ r: 5 }} connectNulls />
             )}
-            <Area type="monotone" dataKey="필터값" stroke="#60a5fa" strokeWidth={2.5} fill="url(#grad-nps-filter)" strokeDasharray="5 3" dot={false} activeDot={{ r: 5 }} />
+            <Area type="monotone" dataKey="필터값" stroke="#60a5fa" strokeWidth={2.5} fill="url(#grad-nps-filter)" strokeDasharray="5 3" dot={false} activeDot={{ r: 5 }} connectNulls />
           </AreaChart>
         </ResponsiveContainer>
       </div>
