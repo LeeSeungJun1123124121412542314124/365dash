@@ -1,6 +1,6 @@
 import { useState } from "react";
 import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
+  AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend,
 } from "recharts";
 import { TrendingUp } from "lucide-react";
@@ -8,12 +8,20 @@ import ScoreCard from "../components/ScoreCard";
 import FilterBar, { type FilterValue } from "../components/FilterBar";
 import PeriodSelector from "../components/PeriodSelector";
 import { useNpsSummary } from "../api/hooks";
-import { defaultFilter, periodToMonths, toChartData } from "../lib/chartUtils";
+import { defaultFilter, periodToMonths, seriesToDualChart } from "../lib/chartUtils";
 
 const PERIOD_OPTIONS = [
   { label: "3개월", value: "3m" },
   { label: "6개월", value: "6m" },
 ];
+
+// npsLevel 선택 → series valueKey 매핑
+const NPS_KEY: Record<string, string> = {
+  "전체":    "very_satisfied_pct",
+  "매우만족": "very_satisfied_pct",
+  "만족":    "satisfied_pct",
+  "보통이하": "below_normal_pct",
+};
 
 function CustomTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
@@ -22,7 +30,7 @@ function CustomTooltip({ active, payload, label }: any) {
       <p className="font-semibold text-gray-700 mb-1">{label}</p>
       {payload.map((p: any) => (
         <p key={p.name} style={{ color: p.color }}>
-          {p.name}: <span className="font-bold">{p.value ?? "—"}점</span>
+          {p.name}: <span className="font-bold">{p.value ?? "—"}%</span>
         </p>
       ))}
     </div>
@@ -33,6 +41,7 @@ export default function NpsPage() {
   const [filter, setFilter] = useState<FilterValue>(defaultFilter());
   const [period, setPeriod] = useState("6m");
   const [showBaseline, setShowBaseline] = useState(true);
+  const [chartType, setChartType] = useState<"line" | "bar">("line");
   const [npsLevel, setNpsLevel] = useState("전체");
 
   const months = periodToMonths(period);
@@ -42,8 +51,9 @@ export default function NpsPage() {
     branch_id: filter.branchId,
   });
 
-  const counts = data?.scorecard_counts ?? {};
-  const chartData = toChartData(data?.trend ?? []);
+  const scorecard = data?.scorecard ?? {};
+  const valueKey = NPS_KEY[npsLevel] ?? "very_satisfied_pct";
+  const chartData = seriesToDualChart(data?.chart?.series, valueKey);
 
   return (
     <div className="space-y-5">
@@ -56,38 +66,29 @@ export default function NpsPage() {
       />
 
       {/* 스코어카드 */}
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 xl:grid-cols-3 gap-4">
         <ScoreCard
           title="매우만족"
-          value={counts.very_satisfied?.count ?? null}
-          unit="건"
+          value={scorecard.very_satisfied?.count ?? null}
+          unit={`건 (${scorecard.very_satisfied?.pct ?? "—"}%)`}
           icon={TrendingUp}
           iconColor="bg-green-100"
           loading={isLoading}
         />
         <ScoreCard
           title="만족"
-          value={counts.satisfied?.count ?? null}
-          unit="건"
+          value={scorecard.satisfied?.count ?? null}
+          unit={`건 (${scorecard.satisfied?.pct ?? "—"}%)`}
           icon={TrendingUp}
           iconColor="bg-blue-100"
           loading={isLoading}
         />
         <ScoreCard
           title="보통이하"
-          value={counts.below_average?.count ?? null}
-          unit="건"
+          value={scorecard.below_normal?.count ?? null}
+          unit={`건 (${scorecard.below_normal?.pct ?? "—"}%)`}
           icon={TrendingUp}
           iconColor="bg-red-100"
-          loading={isLoading}
-        />
-        <ScoreCard
-          title="이번 달 NPS"
-          value={counts.nps_score ?? null}
-          unit="점"
-          change={data?.scorecard?.change ?? undefined}
-          icon={TrendingUp}
-          iconColor="bg-violet-100"
           loading={isLoading}
         />
       </div>
@@ -110,31 +111,51 @@ export default function NpsPage() {
             >
               기준값 {showBaseline ? "숨기기" : "표시"}
             </button>
+            <button
+              onClick={() => setChartType((t) => (t === "line" ? "bar" : "line"))}
+              className="text-xs px-3 py-1 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors"
+            >
+              {chartType === "line" ? "막대로 전환" : "꺾은선으로 전환"}
+            </button>
             <PeriodSelector options={PERIOD_OPTIONS} value={period} onChange={setPeriod} />
           </div>
         </div>
         <ResponsiveContainer width="100%" height={260}>
-          <AreaChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-            <defs>
-              <linearGradient id="grad-nps-base" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#2563eb" stopOpacity={0.12} />
-                <stop offset="95%" stopColor="#2563eb" stopOpacity={0} />
-              </linearGradient>
-              <linearGradient id="grad-nps-filter" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#60a5fa" stopOpacity={0.2} />
-                <stop offset="95%" stopColor="#60a5fa" stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
-            <XAxis dataKey="month" tick={{ fontSize: 12, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fontSize: 12, fill: "#9ca3af" }} axisLine={false} tickLine={false} unit="점" />
-            <Tooltip content={<CustomTooltip />} />
-            <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12 }} />
-            {showBaseline && (
-              <Area type="monotone" dataKey="기준값" stroke="#2563eb" strokeWidth={2.5} fill="url(#grad-nps-base)" dot={false} activeDot={{ r: 5 }} connectNulls />
-            )}
-            <Area type="monotone" dataKey="필터값" stroke="#60a5fa" strokeWidth={2.5} fill="url(#grad-nps-filter)" strokeDasharray="5 3" dot={false} activeDot={{ r: 5 }} connectNulls />
-          </AreaChart>
+          {chartType === "line" ? (
+            <AreaChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+              <defs>
+                <linearGradient id="grad-nps-base" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#2563eb" stopOpacity={0.12} />
+                  <stop offset="95%" stopColor="#2563eb" stopOpacity={0} />
+                </linearGradient>
+                <linearGradient id="grad-nps-filter" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#60a5fa" stopOpacity={0.2} />
+                  <stop offset="95%" stopColor="#60a5fa" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+              <XAxis dataKey="month" tick={{ fontSize: 12, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 12, fill: "#9ca3af" }} axisLine={false} tickLine={false} unit="%" />
+              <Tooltip content={<CustomTooltip />} />
+              <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12 }} />
+              {showBaseline && (
+                <Area type="monotone" dataKey="기준값" stroke="#2563eb" strokeWidth={2.5} fill="url(#grad-nps-base)" dot={false} activeDot={{ r: 5 }} connectNulls />
+              )}
+              <Area type="monotone" dataKey="필터값" stroke="#60a5fa" strokeWidth={2.5} fill="url(#grad-nps-filter)" strokeDasharray="5 3" dot={false} activeDot={{ r: 5 }} connectNulls />
+            </AreaChart>
+          ) : (
+            <BarChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }} barGap={4} barCategoryGap="30%">
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+              <XAxis dataKey="month" tick={{ fontSize: 12, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 12, fill: "#9ca3af" }} axisLine={false} tickLine={false} unit="%" />
+              <Tooltip content={<CustomTooltip />} />
+              <Legend iconType="square" iconSize={8} wrapperStyle={{ fontSize: 12 }} />
+              {showBaseline && (
+                <Bar dataKey="기준값" fill="#2563eb" radius={[5, 5, 0, 0]} maxBarSize={30} />
+              )}
+              <Bar dataKey="필터값" fill="#60a5fa" radius={[5, 5, 0, 0]} maxBarSize={30} />
+            </BarChart>
+          )}
         </ResponsiveContainer>
       </div>
     </div>

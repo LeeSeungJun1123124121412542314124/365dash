@@ -1,6 +1,5 @@
 """
 SQLModel 모델 — §3 데이터 모델 기반.
-ENUM 타입은 PostgreSQL CREATE TYPE 으로 별도 생성 후 여기서 참조.
 """
 from datetime import datetime
 from typing import Optional
@@ -19,6 +18,7 @@ class BranchGroup(SQLModel, table=True):
     code: str = Field(max_length=10, unique=True)       # 예: G01
     name: str = Field(max_length=50)                    # 병원급 / 람스+시술 / 람스
     category: str = Field(max_length=20)                # hospital / lams_surgery / lams
+    sort_order: int = Field(default=0)
 
 
 class Branch(SQLModel, table=True):
@@ -28,6 +28,7 @@ class Branch(SQLModel, table=True):
     code: str = Field(max_length=10, unique=True)       # 예: B01
     name: str = Field(max_length=50)                    # 서울병원
     group_id: int = Field(foreign_key="branch_groups.id")
+    is_active: bool = Field(default=True)
 
 
 # ──────────────────────────────────────────
@@ -49,11 +50,11 @@ class User(SQLModel, table=True):
 
 
 # ──────────────────────────────────────────
-# 업로드 이력 (4종 공통 메타)
+# 업로드 배치 이력 (4종 공통 메타)
 # ──────────────────────────────────────────
 
-class UploadLog(SQLModel, table=True):
-    __tablename__ = "upload_logs"
+class UploadBatch(SQLModel, table=True):
+    __tablename__ = "upload_batches"
 
     id: Optional[int] = Field(default=None, primary_key=True)
     upload_type: str = Field(max_length=20)             # participation / nps / praise / complaint
@@ -66,7 +67,7 @@ class UploadLog(SQLModel, table=True):
 
 
 # ──────────────────────────────────────────
-# 참여율 데이터
+# 참여율 데이터 — §3.4 (UPSERT on branch_id+year+month)
 # ──────────────────────────────────────────
 
 class ParticipationData(SQLModel, table=True):
@@ -76,14 +77,14 @@ class ParticipationData(SQLModel, table=True):
     branch_id: int = Field(foreign_key="branches.id")
     year: int
     month: int
-    target_count: int = Field(default=0)
-    participant_count: int = Field(default=0)
-    # participation_rate: GENERATED ALWAYS AS (participant_count * 100.0 / NULLIF(target_count,0))
-    # → PostgreSQL Generated Column 은 Alembic 마이그레이션에서 수동 정의
+    target_count: int = Field(default=0)        # 참여대상 (≥1)
+    participant_count: int = Field(default=0)   # 참여자 수 (0 이상, ≤ target_count)
+    uploaded_at: datetime = Field(default_factory=datetime.utcnow)
+    uploaded_by: Optional[int] = Field(default=None, foreign_key="users.id")
 
 
 # ──────────────────────────────────────────
-# NPS 데이터
+# NPS 데이터 — §3.5 (UPSERT on branch_id+year+month+day)
 # ──────────────────────────────────────────
 
 class NpsData(SQLModel, table=True):
@@ -93,16 +94,18 @@ class NpsData(SQLModel, table=True):
     branch_id: int = Field(foreign_key="branches.id")
     year: int
     month: int
-    very_satisfied: int = Field(default=0)
-    satisfied: int = Field(default=0)
-    neutral: int = Field(default=0)
-    dissatisfied: int = Field(default=0)
-    very_dissatisfied: int = Field(default=0)
-    # total, below_average = neutral+dissatisfied+very_dissatisfied → 서비스 레이어 계산
+    day: int = Field(default=1)                 # §3.5 일자 컬럼
+    very_satisfied: int = Field(default=0)      # 매우만족
+    satisfied: int = Field(default=0)           # 만족
+    normal: int = Field(default=0)              # 보통 (스펙: normal)
+    dissatisfied: int = Field(default=0)        # 불만족
+    very_dissatisfied: int = Field(default=0)   # 매우불만족
+    uploaded_at: datetime = Field(default_factory=datetime.utcnow)
+    uploaded_by: Optional[int] = Field(default=None, foreign_key="users.id")
 
 
 # ──────────────────────────────────────────
-# 칭찬 데이터
+# 칭찬 데이터 — §3.7 (행 단위 raw, DELETE+INSERT)
 # ──────────────────────────────────────────
 
 class PraiseData(SQLModel, table=True):
@@ -112,14 +115,23 @@ class PraiseData(SQLModel, table=True):
     branch_id: int = Field(foreign_key="branches.id")
     year: int
     month: int
-    surgery_count: int = Field(default=0)    # 수술(병원급)
-    lams_count: int = Field(default=0)       # 람스
-    lams_surgery_count: int = Field(default=0)  # 람스+시술
+    day: int
+    inflow_path: Optional[str] = Field(default=None, max_length=100)   # 유입경로
+    content: str                                                         # 칭찬내용
+    target_person: Optional[str] = Field(default=None, max_length=100)  # 칭찬대상자
+    batch_id: Optional[int] = Field(default=None, foreign_key="upload_batches.id")
+    uploaded_at: datetime = Field(default_factory=datetime.utcnow)
+    uploaded_by: Optional[int] = Field(default=None, foreign_key="users.id")
 
 
 # ──────────────────────────────────────────
-# 불만 데이터
+# 불만 데이터 — §3.8 (행 단위 raw, DELETE+INSERT)
 # ──────────────────────────────────────────
+
+COMPLAINT_CATEGORIES = [
+    "parking", "guidance", "waiting", "rudeness",
+    "system", "privacy", "environment", "other",
+]
 
 class ComplaintData(SQLModel, table=True):
     __tablename__ = "complaint_data"
@@ -128,15 +140,10 @@ class ComplaintData(SQLModel, table=True):
     branch_id: int = Field(foreign_key="branches.id")
     year: int
     month: int
-    surgery_count: int = Field(default=0)
-    lams_count: int = Field(default=0)
-    lams_surgery_count: int = Field(default=0)
-    # 카테고리별 건수
-    parking: int = Field(default=0)
-    guidance: int = Field(default=0)
-    waiting: int = Field(default=0)
-    rudeness: int = Field(default=0)
-    system: int = Field(default=0)
-    privacy: int = Field(default=0)
-    environment: int = Field(default=0)
-    other: int = Field(default=0)
+    day: int
+    inflow_path: Optional[str] = Field(default=None, max_length=100)   # 유입경로
+    content: str                                                         # 불만내용
+    category: str = Field(max_length=20)                                # complaint_category enum 값
+    batch_id: Optional[int] = Field(default=None, foreign_key="upload_batches.id")
+    uploaded_at: datetime = Field(default_factory=datetime.utcnow)
+    uploaded_by: Optional[int] = Field(default=None, foreign_key="users.id")

@@ -1,4 +1,4 @@
-"""칭찬 집계 API."""
+"""칭찬 집계 API — §5.4 스펙 기반."""
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -6,21 +6,54 @@ from sqlmodel import select, func
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.deps import get_current_user, get_data_filter, get_session
-from app.db.models import Branch, PraiseData
-from app.schemas.common import ChartPoint, ScoreCard
+from app.db.models import Branch, BranchGroup, PraiseData
 from app.services.month_window import recent_months
 
 router = APIRouter(prefix="/praise", tags=["칭찬"])
 
-_TOTAL = PraiseData.surgery_count + PraiseData.lams_count + PraiseData.lams_surgery_count
+# BranchGroup category → 소계 키 매핑
+CATEGORY_KEY = {
+    "hospital":      "surgery",       # 병원급 (G1)
+    "lams_surgery":  "lams_surgery",  # 람스+시술 (G2)
+    "lams":          "lams",          # 람스 (G3)
+}
 
 
 def _apply_filter(q, eff_group, eff_branch):
     if eff_group:
-        return q.join(Branch, Branch.id == PraiseData.branch_id).where(Branch.group_id == eff_group)
+        return q.where(Branch.group_id == eff_group)
     elif eff_branch:
         return q.where(PraiseData.branch_id == eff_branch)
     return q
+
+
+async def _count_by_group(
+    session: AsyncSession,
+    year: int,
+    month: int,
+    eff_group: Optional[int],
+    eff_branch: Optional[int],
+) -> dict:
+    """월별 칭찬 건수를 지점군별로 집계."""
+    q = (
+        select(
+            BranchGroup.category.label("cat"),
+            func.count(PraiseData.id).label("cnt"),
+        )
+        .join(Branch, Branch.id == PraiseData.branch_id)
+        .join(BranchGroup, BranchGroup.id == Branch.group_id)
+        .where(PraiseData.year == year, PraiseData.month == month)
+    )
+    q = _apply_filter(q, eff_group, eff_branch)
+    q = q.group_by(BranchGroup.category)
+
+    rows = (await session.exec(q)).all()
+    result = {"total": 0, "surgery": 0, "lams": 0, "lams_surgery": 0}
+    for r in rows:
+        key = CATEGORY_KEY.get(r.cat, "lams")
+        result[key] = r.cnt
+        result["total"] += r.cnt
+    return result
 
 
 @router.get("/summary")
@@ -36,39 +69,35 @@ async def get_praise_summary(
     eff_branch = perm["branch_id"] if perm["branch_id"] is not None else branch_id
 
     period = recent_months(months)
-    chart = []
+    baseline_series = []
+    filtered_series = []
 
     for year, month in period:
-        w = (PraiseData.year == year, PraiseData.month == month)
-        rb = (await session.exec(select(func.sum(_TOTAL).label("t")).where(*w))).first()
-        rf = (await session.exec(
-            _apply_filter(select(func.sum(_TOTAL).label("t")).where(*w), eff_group, eff_branch)
-        )).first()
-        chart.append(ChartPoint(label=f"{month}월", baseline=float(rb.t or 0), value=float(rf.t or 0)))
+        label = f"{year}-{month:02d}"
+        base = await _count_by_group(session, year, month, None, None)
+        filt = await _count_by_group(session, year, month, eff_group, eff_branch)
+        baseline_series.append({"x": label, "total": base["total"],
+                                 "surgery": base["surgery"],
+                                 "lams": base["lams"],
+                                 "lams_surgery": base["lams_surgery"]})
+        filtered_series.append({"x": label, "total": filt["total"],
+                                 "surgery": filt["surgery"],
+                                 "lams": filt["lams"],
+                                 "lams_surgery": filt["lams_surgery"]})
 
     # 최신 월 스코어카드
-    scorecards = {}
-    if period:
-        year, month = period[-1]
-        w = (PraiseData.year == year, PraiseData.month == month)
-        q_detail = select(
-            func.sum(PraiseData.surgery_count).label("surgery"),
-            func.sum(PraiseData.lams_count).label("lams"),
-            func.sum(PraiseData.lams_surgery_count).label("lams_surgery"),
-        ).where(*w)
-        rb = (await session.exec(q_detail)).first()
-        rf = (await session.exec(_apply_filter(q_detail, eff_group, eff_branch))).first()
+    latest_base = baseline_series[-1] if baseline_series else {}
+    latest_filt = filtered_series[-1] if filtered_series else {}
 
-        base_total   = (rb.surgery or 0) + (rb.lams or 0) + (rb.lams_surgery or 0)
-        filter_total = (rf.surgery or 0) + (rf.lams or 0) + (rf.lams_surgery or 0)
-        prev_val = chart[-2].value if len(chart) >= 2 else None
-        change = round(filter_total - prev_val, 1) if prev_val is not None else None
-
-        scorecards = {
-            "base_total":   ScoreCard(label="기준값 칭찬총계", value=base_total,   unit="건"),
-            "filter_total": ScoreCard(label="필터값 칭찬총계", value=filter_total, unit="건", change=change),
-            "surgery":      ScoreCard(label="수술 칭찬",       value=rf.surgery or 0,      unit="건"),
-            "lams_surgery": ScoreCard(label="람스+시술 칭찬",  value=rf.lams_surgery or 0, unit="건"),
-        }
-
-    return {"scorecards": scorecards, "trend": chart}
+    return {
+        "scorecard": {
+            "baseline_total": latest_base.get("total", 0),
+            "filtered_total": latest_filt.get("total", 0),
+        },
+        "chart": {
+            "series": [
+                {"label": "기준값", "type": "bar", "data": baseline_series},
+                {"label": "필터값", "type": "bar", "data": filtered_series},
+            ]
+        },
+    }

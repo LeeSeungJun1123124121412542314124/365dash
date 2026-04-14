@@ -1,4 +1,4 @@
-"""참여율 집계 API."""
+"""참여율 집계 API — §5.2 스펙 기반."""
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -7,7 +7,6 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.deps import get_current_user, get_data_filter, get_session
 from app.db.models import Branch, ParticipationData
-from app.schemas.common import ChartPoint, ScoreCard
 from app.services.month_window import recent_months
 
 router = APIRouter(prefix="/participation", tags=["참여율"])
@@ -25,16 +24,17 @@ async def get_participation_summary(
     user: Annotated[dict, Depends(get_current_user)] = None,
     session: Annotated[AsyncSession, Depends(get_session)] = None,
 ):
-    # 역할 기반 필터 (admin은 쿼리 파라미터 우선, 그 외는 강제 적용)
     perm = get_data_filter(user)
     eff_group  = perm["group_id"]  if perm["group_id"]  is not None else group_id
     eff_branch = perm["branch_id"] if perm["branch_id"] is not None else branch_id
 
     period = recent_months(months)
-    chart = []
+    baseline_series = []
+    filtered_series = []
 
     for year, month in period:
-        # 기준값 (전체)
+        label = f"{year}-{month:02d}"
+
         rb = (await session.exec(
             select(
                 func.sum(ParticipationData.target_count).label("t"),
@@ -42,7 +42,6 @@ async def get_participation_summary(
             ).where(ParticipationData.year == year, ParticipationData.month == month)
         )).first()
 
-        # 필터값
         qf = select(
             func.sum(ParticipationData.target_count).label("t"),
             func.sum(ParticipationData.participant_count).label("p"),
@@ -53,19 +52,18 @@ async def get_participation_summary(
             qf = qf.where(ParticipationData.branch_id == eff_branch)
         rf = (await session.exec(qf)).first()
 
-        chart.append(ChartPoint(
-            label=f"{month}월",
-            baseline=_rate(rb.t or 0, rb.p or 0),
-            value=_rate(rf.t or 0, rf.p or 0),
-        ))
+        baseline_series.append({"x": label, "rate": _rate(rb.t or 0, rb.p or 0)})
+        filtered_series.append({"x": label, "rate": _rate(rf.t or 0, rf.p or 0)})
 
-    latest = chart[-1] if chart else None
-    prev   = chart[-2] if len(chart) >= 2 else None
-    change = None
-    if latest and latest.value is not None and prev and prev.value is not None:
-        change = round(latest.value - prev.value, 1)
+    # 최신 월 스코어카드
+    current_rate = filtered_series[-1]["rate"] if filtered_series else None
 
     return {
-        "scorecard": ScoreCard(label="이번달 참여율", value=latest.value if latest else None, unit="%", change=change),
-        "trend": chart,
+        "scorecard": {"current_month_rate": current_rate},
+        "chart": {
+            "series": [
+                {"label": "기준값 (전체)", "type": "line", "data": baseline_series},
+                {"label": "필터값 (선택 지점/군)", "type": "line", "data": filtered_series},
+            ]
+        },
     }

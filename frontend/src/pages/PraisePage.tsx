@@ -8,7 +8,7 @@ import ScoreCard from "../components/ScoreCard";
 import FilterBar, { type FilterValue } from "../components/FilterBar";
 import PeriodSelector from "../components/PeriodSelector";
 import { usePraiseSummary } from "../api/hooks";
-import { defaultFilter, periodToMonths, toChartData } from "../lib/chartUtils";
+import { defaultFilter, periodToMonths, seriesToDualChart } from "../lib/chartUtils";
 
 const PERIOD_OPTIONS = [
   { label: "3개월", value: "3m" },
@@ -41,46 +41,29 @@ export default function PraisePage() {
     branch_id: filter.branchId,
   });
 
-  const scorecards = data?.scorecards ?? {};
-  const chartData = toChartData(data?.trend ?? []);
+  const scorecard = data?.scorecard ?? {};
+  const chartData = seriesToDualChart(data?.chart?.series, "total");
 
   return (
     <div className="space-y-5">
       <FilterBar value={filter} onChange={setFilter} />
 
       {/* 스코어카드 */}
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-4">
         <ScoreCard
-          title="기준값 칭찬총계"
-          value={scorecards.base_total?.value ?? null}
+          title="기준값 칭찬총계 (전체)"
+          value={scorecard.baseline_total ?? null}
           unit="건"
           icon={Star}
           iconColor="bg-amber-100"
           loading={isLoading}
         />
         <ScoreCard
-          title="필터값 칭찬총계"
-          value={scorecards.filter_total?.value ?? null}
+          title="필터값 칭찬총계 (선택)"
+          value={scorecard.filtered_total ?? null}
           unit="건"
-          change={scorecards.filter_total?.change ?? undefined}
           icon={Star}
           iconColor="bg-yellow-100"
-          loading={isLoading}
-        />
-        <ScoreCard
-          title="수술 칭찬"
-          value={scorecards.surgery?.value ?? null}
-          unit="건"
-          icon={Star}
-          iconColor="bg-orange-100"
-          loading={isLoading}
-        />
-        <ScoreCard
-          title="람스+시술 칭찬"
-          value={scorecards.lams_surgery?.value ?? null}
-          unit="건"
-          icon={Star}
-          iconColor="bg-red-50"
           loading={isLoading}
         />
       </div>

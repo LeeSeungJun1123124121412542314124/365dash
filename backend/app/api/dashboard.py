@@ -1,4 +1,4 @@
-"""메인 대시보드 — 최근 6개월 평균 스코어카드 + 4개 추이 그래프."""
+"""메인 대시보드 — §5.1 스펙 기반."""
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -7,65 +7,9 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.deps import get_current_user, get_session
 from app.db.models import Branch, ComplaintData, NpsData, ParticipationData, PraiseData
-from app.schemas.common import ChartPoint, ScoreCard
 from app.services.month_window import recent_months
 
 router = APIRouter(prefix="/dashboard", tags=["메인 대시보드"])
-
-
-async def _avg_participation(session: AsyncSession, period: list) -> Optional[float]:
-    """최근 N개월 평균 참여율 (전체 기준)."""
-    vals = []
-    for year, month in period:
-        r = (await session.exec(
-            select(
-                func.sum(ParticipationData.target_count).label("t"),
-                func.sum(ParticipationData.participant_count).label("p"),
-            ).where(ParticipationData.year == year, ParticipationData.month == month)
-        )).first()
-        if r.t:
-            vals.append(r.p / r.t * 100)
-    return round(sum(vals) / len(vals), 1) if vals else None
-
-
-async def _avg_nps(session: AsyncSession, period: list) -> Optional[float]:
-    vals = []
-    for year, month in period:
-        r = (await session.exec(
-            select(
-                func.sum(NpsData.very_satisfied).label("vs"),
-                func.sum(NpsData.satisfied + NpsData.neutral + NpsData.dissatisfied + NpsData.very_dissatisfied).label("rest"),
-                func.sum(NpsData.dissatisfied + NpsData.very_dissatisfied).label("det"),
-                func.sum(NpsData.very_satisfied + NpsData.satisfied + NpsData.neutral + NpsData.dissatisfied + NpsData.very_dissatisfied).label("total"),
-            ).where(NpsData.year == year, NpsData.month == month)
-        )).first()
-        if r.total:
-            vals.append((r.vs / r.total - r.det / r.total) * 100)
-    return round(sum(vals) / len(vals), 1) if vals else None
-
-
-async def _sum_praise(session: AsyncSession, period: list) -> Optional[int]:
-    total = 0
-    for year, month in period:
-        r = (await session.exec(
-            select(func.sum(PraiseData.surgery_count + PraiseData.lams_count + PraiseData.lams_surgery_count).label("t"))
-            .where(PraiseData.year == year, PraiseData.month == month)
-        )).first()
-        total += (r.t or 0)
-    return total if total else None
-
-
-async def _sum_complaint(session: AsyncSession, period: list) -> Optional[int]:
-    total = 0
-    for year, month in period:
-        r = (await session.exec(
-            select(func.sum(
-                ComplaintData.surgery_count + ComplaintData.lams_count + ComplaintData.lams_surgery_count
-            ).label("t"))
-            .where(ComplaintData.year == year, ComplaintData.month == month)
-        )).first()
-        total += (r.t or 0)
-    return total if total else None
 
 
 @router.get("/main")
@@ -76,20 +20,13 @@ async def get_main_dashboard(
 ):
     period = recent_months(months)
 
-    # 스코어카드 (최근 N개월 평균/합계)
-    participation_avg = await _avg_participation(session, period)
-    nps_avg = await _avg_nps(session, period)
-    praise_sum = await _sum_praise(session, period)
-    complaint_sum = await _sum_complaint(session, period)
-
-    # 추이 차트 (월별)
     participation_trend = []
     nps_trend = []
-    praise_comparison = []
-    complaint_comparison = []
+    praise_trend = []
+    complaint_trend = []
 
     for year, month in period:
-        label = f"{month}월"
+        label = f"{year}-{month:02d}"
 
         # 참여율
         pr = (await session.exec(
@@ -99,42 +36,62 @@ async def get_main_dashboard(
             ).where(ParticipationData.year == year, ParticipationData.month == month)
         )).first()
         rate = round(pr.p / pr.t * 100, 1) if pr.t else None
-        participation_trend.append(ChartPoint(label=label, value=rate))
+        participation_trend.append({"label": label, "rate": rate})
 
-        # NPS
+        # NPS — normal 필드명 사용
         nr = (await session.exec(
             select(
                 func.sum(NpsData.very_satisfied).label("vs"),
-                func.sum(NpsData.dissatisfied + NpsData.very_dissatisfied).label("det"),
-                func.sum(NpsData.very_satisfied + NpsData.satisfied + NpsData.neutral + NpsData.dissatisfied + NpsData.very_dissatisfied).label("total"),
+                func.sum(NpsData.satisfied).label("s"),
+                func.sum(NpsData.normal).label("n"),
+                func.sum(NpsData.dissatisfied).label("d"),
+                func.sum(NpsData.very_dissatisfied).label("vd"),
             ).where(NpsData.year == year, NpsData.month == month)
         )).first()
-        nps = round((nr.vs / nr.total - nr.det / nr.total) * 100, 1) if nr.total else None
-        nps_trend.append(ChartPoint(label=label, value=nps))
+        vs, s, n, d, vd = (nr.vs or 0, nr.s or 0, nr.n or 0, nr.d or 0, nr.vd or 0)
+        total = vs + s + n + d + vd
+        below = n + d + vd
+        nps_trend.append({
+            "label": label,
+            "very_satisfied_pct": round(vs / total * 100, 1) if total else None,
+            "satisfied_pct": round(s / total * 100, 1) if total else None,
+            "below_normal_pct": round(below / total * 100, 1) if total else None,
+        })
 
-        # 칭찬
-        crp = (await session.exec(
-            select(func.sum(PraiseData.surgery_count + PraiseData.lams_count + PraiseData.lams_surgery_count).label("t"))
+        # 칭찬 (행 단위 COUNT)
+        pc = (await session.exec(
+            select(func.count(PraiseData.id).label("cnt"))
             .where(PraiseData.year == year, PraiseData.month == month)
         )).first()
-        praise_comparison.append(ChartPoint(label=label, value=float(crp.t) if crp.t else 0))
+        praise_trend.append({"label": label, "count": pc.cnt or 0})
 
-        # 불만
-        crc = (await session.exec(
-            select(func.sum(ComplaintData.surgery_count + ComplaintData.lams_count + ComplaintData.lams_surgery_count).label("t"))
+        # 불만 (행 단위 COUNT)
+        cc = (await session.exec(
+            select(func.count(ComplaintData.id).label("cnt"))
             .where(ComplaintData.year == year, ComplaintData.month == month)
         )).first()
-        complaint_comparison.append(ChartPoint(label=label, value=float(crc.t) if crc.t else 0))
+        complaint_trend.append({"label": label, "count": cc.cnt or 0})
+
+    # 스코어카드 — 최근 N개월 평균
+    def _avg(values):
+        vals = [v for v in values if v is not None]
+        return round(sum(vals) / len(vals), 1) if vals else None
+
+    scorecard = {
+        "participation_rate_avg": _avg([p["rate"] for p in participation_trend]),
+        "nps_very_satisfied_pct": _avg([p["very_satisfied_pct"] for p in nps_trend]),
+        "nps_satisfied_pct":      _avg([p["satisfied_pct"] for p in nps_trend]),
+        "nps_below_normal_pct":   _avg([p["below_normal_pct"] for p in nps_trend]),
+        "praise_count_avg":       _avg([p["count"] for p in praise_trend]),
+        "complaint_count_avg":    _avg([p["count"] for p in complaint_trend]),
+    }
 
     return {
-        "scorecards": [
-            ScoreCard(label="평균 참여율", value=participation_avg, unit="%"),
-            ScoreCard(label="평균 NPS", value=nps_avg, unit="점"),
-            ScoreCard(label="칭찬 총계", value=praise_sum, unit="건"),
-            ScoreCard(label="불만 총계", value=complaint_sum, unit="건"),
-        ],
-        "participation_trend": participation_trend,
-        "nps_trend": nps_trend,
-        "praise_comparison": praise_comparison,
-        "complaint_comparison": complaint_comparison,
+        "scorecard": scorecard,
+        "charts": {
+            "participation_trend": participation_trend,
+            "nps_trend": nps_trend,
+            "praise_trend": praise_trend,
+            "complaint_trend": complaint_trend,
+        },
     }

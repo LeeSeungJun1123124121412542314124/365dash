@@ -1,4 +1,21 @@
-/** API ChartPoint 배열을 Recharts가 읽는 { month, 기준값, 필터값 } 배열로 변환 */
+/** 새 API series 포맷 → Recharts { month, 기준값, 필터값 } 배열 변환
+ *  valueKey: data 항목에서 사용할 필드명 (예: "total", "rate")
+ */
+export function seriesToDualChart(
+  series: Array<{ label: string; data: Array<{ x: string; [key: string]: any }> }> | undefined,
+  valueKey: string
+): Array<{ month: string; 기준값: number | null; 필터값: number | null }> {
+  if (!series || series.length === 0) return [];
+  const base = series[0]?.data ?? [];
+  const filt = series[1]?.data ?? [];
+  return base.map((b, i) => ({
+    month: b.x,
+    기준값: b[valueKey] ?? null,
+    필터값: filt[i]?.[valueKey] ?? null,
+  }));
+}
+
+/** 이전 호환: {label, baseline, value} 배열 → Recharts 변환 (MainDashboard 단순 차트용) */
 export function toChartData(
   points: Array<{ label: string; baseline?: number | null; value?: number | null }>
 ) {

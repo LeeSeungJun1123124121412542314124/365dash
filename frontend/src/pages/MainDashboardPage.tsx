@@ -8,7 +8,7 @@ import { TrendingUp, Star, ThumbsDown, Users } from "lucide-react";
 import ScoreCard from "../components/ScoreCard";
 import PeriodSelector from "../components/PeriodSelector";
 import { useDashboardMain } from "../api/hooks";
-import { toChartData, periodToMonths } from "../lib/chartUtils";
+import { periodToMonths } from "../lib/chartUtils";
 
 const PERIOD_OPTIONS = [
   { label: "3개월", value: "3m" },
@@ -48,34 +48,45 @@ function ChartCard({
   );
 }
 
-const ICONS = [
-  { icon: Users,     color: "bg-violet-100" },
-  { icon: TrendingUp, color: "bg-blue-100" },
-  { icon: Star,      color: "bg-amber-100" },
-  { icon: ThumbsDown, color: "bg-red-100" },
-];
-
 export default function MainDashboardPage() {
   const [period, setPeriod] = useState("6m");
   const months = periodToMonths(period);
   const { data, isLoading } = useDashboardMain(months);
 
-  const scorecards: any[] = data?.scorecards ?? [];
-  const participationTrend = toChartData(data?.participation_trend ?? []);
-  const npsTrend          = toChartData(data?.nps_trend ?? []);
-  const praiseComparison  = toChartData(data?.praise_comparison ?? []);
-  const complaintComparison = toChartData(data?.complaint_comparison ?? []);
+  const scorecard = data?.scorecard ?? {};
+  const charts = data?.charts ?? {};
+
+  // 단순 트렌드 (단일 시리즈) — 메인 대시보드는 전체 평균만 표시
+  const participationTrend = (charts.participation_trend ?? []).map((p: any) => ({
+    month: p.label, 참여율: p.rate,
+  }));
+  const npsTrend = (charts.nps_trend ?? []).map((p: any) => ({
+    month: p.label, 매우만족: p.very_satisfied_pct,
+  }));
+  const praiseTrend = (charts.praise_trend ?? []).map((p: any) => ({
+    month: p.label, 건수: p.count,
+  }));
+  const complaintTrend = (charts.complaint_trend ?? []).map((p: any) => ({
+    month: p.label, 건수: p.count,
+  }));
+
+  const SCORE_ITEMS = [
+    { icon: Users,      color: "bg-violet-100", title: "평균 참여율",    value: scorecard.participation_rate_avg,   unit: "%" },
+    { icon: TrendingUp, color: "bg-blue-100",   title: "NPS 매우만족율", value: scorecard.nps_very_satisfied_pct,  unit: "%" },
+    { icon: Star,       color: "bg-amber-100",  title: "평균 칭찬건수",  value: scorecard.praise_count_avg,        unit: "건" },
+    { icon: ThumbsDown, color: "bg-red-100",    title: "평균 불만건수",  value: scorecard.complaint_count_avg,     unit: "건" },
+  ];
 
   return (
     <div className="space-y-5">
       {/* 스코어카드 4개 */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-        {ICONS.map(({ icon, color }, i) => (
+        {SCORE_ITEMS.map(({ icon, color, title, value, unit }) => (
           <ScoreCard
-            key={i}
-            title={scorecards[i]?.label ?? "—"}
-            value={scorecards[i]?.value ?? null}
-            unit={scorecards[i]?.unit ?? ""}
+            key={title}
+            title={title}
+            value={value ?? null}
+            unit={unit}
             icon={icon}
             iconColor={color}
             loading={isLoading}
@@ -90,13 +101,9 @@ export default function MainDashboardPage() {
           <ResponsiveContainer width="100%" height={200}>
             <AreaChart data={participationTrend} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
               <defs>
-                <linearGradient id="g-p-base" x1="0" y1="0" x2="0" y2="1">
+                <linearGradient id="g-p" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#7c3aed" stopOpacity={0.15} />
                   <stop offset="95%" stopColor="#7c3aed" stopOpacity={0} />
-                </linearGradient>
-                <linearGradient id="g-p-filter" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#a78bfa" stopOpacity={0.25} />
-                  <stop offset="95%" stopColor="#a78bfa" stopOpacity={0} />
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
@@ -104,24 +111,19 @@ export default function MainDashboardPage() {
               <YAxis tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} domain={[0, 100]} />
               <Tooltip content={<CustomTooltip />} />
               <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
-              <Area type="monotone" dataKey="기준값" stroke="#7c3aed" strokeWidth={2} fill="url(#g-p-base)" dot={false} connectNulls />
-              <Area type="monotone" dataKey="필터값" stroke="#a78bfa" strokeWidth={2} fill="url(#g-p-filter)" strokeDasharray="4 2" dot={false} connectNulls />
+              <Area type="monotone" dataKey="참여율" stroke="#7c3aed" strokeWidth={2} fill="url(#g-p)" dot={false} connectNulls />
             </AreaChart>
           </ResponsiveContainer>
         </ChartCard>
 
         {/* NPS 추이 */}
-        <ChartCard title="NPS 추이 (점)" period={period} onPeriodChange={setPeriod}>
+        <ChartCard title="NPS 매우만족율 추이 (%)" period={period} onPeriodChange={setPeriod}>
           <ResponsiveContainer width="100%" height={200}>
             <AreaChart data={npsTrend} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
               <defs>
-                <linearGradient id="g-n-base" x1="0" y1="0" x2="0" y2="1">
+                <linearGradient id="g-n" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#2563eb" stopOpacity={0.15} />
                   <stop offset="95%" stopColor="#2563eb" stopOpacity={0} />
-                </linearGradient>
-                <linearGradient id="g-n-filter" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#60a5fa" stopOpacity={0.25} />
-                  <stop offset="95%" stopColor="#60a5fa" stopOpacity={0} />
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
@@ -129,38 +131,35 @@ export default function MainDashboardPage() {
               <YAxis tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
               <Tooltip content={<CustomTooltip />} />
               <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
-              <Area type="monotone" dataKey="기준값" stroke="#2563eb" strokeWidth={2} fill="url(#g-n-base)" dot={false} connectNulls />
-              <Area type="monotone" dataKey="필터값" stroke="#60a5fa" strokeWidth={2} fill="url(#g-n-filter)" strokeDasharray="4 2" dot={false} connectNulls />
+              <Area type="monotone" dataKey="매우만족" stroke="#2563eb" strokeWidth={2} fill="url(#g-n)" dot={false} connectNulls />
             </AreaChart>
           </ResponsiveContainer>
         </ChartCard>
 
-        {/* 칭찬 비교 */}
-        <ChartCard title="칭찬현황 비교 (건)" period={period} onPeriodChange={setPeriod}>
+        {/* 칭찬 추이 */}
+        <ChartCard title="칭찬현황 추이 (건)" period={period} onPeriodChange={setPeriod}>
           <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={praiseComparison} margin={{ top: 4, right: 4, left: -20, bottom: 0 }} barGap={2}>
+            <BarChart data={praiseTrend} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
               <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
               <Tooltip content={<CustomTooltip />} />
               <Legend iconType="square" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
-              <Bar dataKey="기준값" fill="#7c3aed" radius={[4, 4, 0, 0]} maxBarSize={24} />
-              <Bar dataKey="필터값" fill="#c4b5fd" radius={[4, 4, 0, 0]} maxBarSize={24} />
+              <Bar dataKey="건수" fill="#7c3aed" radius={[4, 4, 0, 0]} maxBarSize={24} />
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
 
-        {/* 불만 비교 */}
-        <ChartCard title="불만현황 비교 (건)" period={period} onPeriodChange={setPeriod}>
+        {/* 불만 추이 */}
+        <ChartCard title="불만현황 추이 (건)" period={period} onPeriodChange={setPeriod}>
           <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={complaintComparison} margin={{ top: 4, right: 4, left: -20, bottom: 0 }} barGap={2}>
+            <BarChart data={complaintTrend} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
               <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
               <Tooltip content={<CustomTooltip />} />
               <Legend iconType="square" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
-              <Bar dataKey="기준값" fill="#ef4444" radius={[4, 4, 0, 0]} maxBarSize={24} />
-              <Bar dataKey="필터값" fill="#fca5a5" radius={[4, 4, 0, 0]} maxBarSize={24} />
+              <Bar dataKey="건수" fill="#ef4444" radius={[4, 4, 0, 0]} maxBarSize={24} />
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>

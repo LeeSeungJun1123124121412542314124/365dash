@@ -7,31 +7,30 @@ type UploadType = "participation" | "nps" | "praise" | "complaint";
 const UPLOAD_LABELS: Record<UploadType, { label: string; desc: string; cols: string[] }> = {
   participation: {
     label: "참여율",
-    desc: "연도 / 월 / 지점명 / 참여대상 / 참여자",
-    cols: ["연도", "월", "지점명", "참여대상", "참여자"],
+    desc: "연도 / 월 / 지점명 / 참여대상 수 / 참여자 수",
+    cols: ["연도", "월", "지점명", "참여대상 수", "참여자 수"],
   },
   nps: {
     label: "NPS",
-    desc: "연도 / 월 / 지점명 / 매우만족 / 만족 / 보통 / 불만족 / 매우불만족",
-    cols: ["연도", "월", "지점명", "매우만족", "만족", "보통", "불만족", "매우불만족"],
+    desc: "연도 / 월 / 일 / 지점명 / 매우만족(개수) / 만족(개수) / 보통(개수) / 불만족(개수) / 매우불만족(개수)",
+    cols: ["연도", "월", "일", "지점명", "매우만족(개수)", "만족(개수)", "보통(개수)", "불만족(개수)", "매우불만족(개수)"],
   },
   praise: {
     label: "칭찬",
-    desc: "연도 / 월 / 지점명 / 수술 / 람스 / 람스+시술",
-    cols: ["연도", "월", "지점명", "수술", "람스", "람스+시술"],
+    desc: "No. / 유입경로 / 지점명 / 연도 / 월 / 일 / 칭찬내용 / 칭찬대상자 (행 단위)",
+    cols: ["No.", "유입경로", "지점명", "연도", "월", "일", "칭찬내용", "칭찬대상자"],
   },
   complaint: {
     label: "불만",
-    desc: "연도 / 월 / 지점명 / 수술 / 람스 / 람스+시술 + 8개 카테고리 컬럼",
-    cols: ["연도", "월", "지점명", "수술", "람스", "람스+시술", "주차", "안내·응대부족", "대기관련", "불친절", "시스템불만", "개인정보", "환경불만", "기타"],
+    desc: "No. / 연도 / 월 / 일 / 지점명 / 유입경로 / 불만내용 / 불만카테고리선택 (행 단위)",
+    cols: ["No.", "연도", "월", "일", "지점명", "유입경로", "불만내용", "불만카테고리선택"],
   },
 };
 
 interface UploadResult {
   success: boolean;
-  inserted: number;
-  updated: number;
-  errors: Array<{ row: number; column: string; message: string }>;
+  uploaded_count: number;
+  errors: Array<{ row: number; column: string; message: string; value?: any }>;
 }
 
 export default function UploadPage() {
@@ -175,10 +174,7 @@ export default function UploadPage() {
           {status === "success" && result && (
             <div className="flex items-start gap-2 text-green-600 bg-green-50 rounded-xl px-4 py-3 text-sm">
               <CheckCircle size={16} className="mt-0.5 flex-shrink-0" />
-              <span>
-                업로드 성공! 신규 {result.inserted}건 삽입,
-                기존 {result.updated}건 업데이트
-              </span>
+              <span>업로드 성공! {result.uploaded_count}건 처리 완료</span>
             </div>
           )}
           {status === "error" && (
@@ -194,6 +190,7 @@ export default function UploadPage() {
               {result.errors.map((e, i) => (
                 <p key={i} className="text-xs text-red-500">
                   {e.row}행 [{e.column}]: {e.message}
+                  {e.value != null && <span className="text-gray-400"> (값: {String(e.value)})</span>}
                 </p>
               ))}
             </div>

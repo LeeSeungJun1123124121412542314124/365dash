@@ -11,13 +11,13 @@ class HealthResponse(BaseModel):
 class ErrorDetail(BaseModel):
     row: int
     column: str
+    value: Optional[Any] = None   # 입력된 실제 값 (§4.0 에러 보고)
     message: str
 
 
 class UploadResponse(BaseModel):
     success: bool
-    inserted: int
-    updated: int = 0
+    uploaded_count: int = 0   # §5.7~5.10: uploaded_count 필드명
     errors: list[ErrorDetail] = []
 
 

@@ -8,7 +8,7 @@ import ScoreCard from "../components/ScoreCard";
 import FilterBar, { type FilterValue } from "../components/FilterBar";
 import PeriodSelector from "../components/PeriodSelector";
 import { useParticipationSummary } from "../api/hooks";
-import { defaultFilter, periodToMonths, toChartData } from "../lib/chartUtils";
+import { defaultFilter, periodToMonths, seriesToDualChart } from "../lib/chartUtils";
 
 const PERIOD_OPTIONS = [
   { label: "3개월", value: "3m" },
@@ -42,7 +42,7 @@ export default function ParticipationPage() {
   });
 
   const scorecard = data?.scorecard;
-  const chartData = toChartData(data?.trend ?? []);
+  const chartData = seriesToDualChart(data?.chart?.series, "rate");
 
   return (
     <div className="space-y-5">
@@ -52,9 +52,8 @@ export default function ParticipationPage() {
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         <ScoreCard
           title="이번 달 참여율"
-          value={scorecard?.value ?? null}
+          value={scorecard?.current_month_rate ?? null}
           unit="%"
-          change={scorecard?.change ?? undefined}
           icon={Users}
           iconColor="bg-violet-100"
           loading={isLoading}
