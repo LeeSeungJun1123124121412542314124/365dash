@@ -2,6 +2,7 @@
 월 집계 윈도우 계산: 전월 26일 00:00 ~ 당월 25일 23:59
 """
 from datetime import date, datetime
+from typing import Optional
 
 
 def get_month_window(year: int, month: int) -> tuple[date, date]:
@@ -15,6 +16,13 @@ def get_month_window(year: int, month: int) -> tuple[date, date]:
         start = date(year, month - 1, 26)
     end = date(year, month, 25)
     return start, end
+
+
+def recent_months(n: int = 6, base: Optional[tuple[int, int]] = None) -> list[tuple[int, int]]:
+    """현재 날짜(또는 base) 기준 최근 n개월 (year, month) 오름차순 반환."""
+    today = date.today()
+    by, bm = base if base else (today.year, today.month)
+    return get_recent_months(by, bm, n)
 
 
 def get_recent_months(base_year: int, base_month: int, n: int = 6) -> list[tuple[int, int]]:

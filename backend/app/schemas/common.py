@@ -17,6 +17,7 @@ class ErrorDetail(BaseModel):
 class UploadResponse(BaseModel):
     success: bool
     inserted: int
+    updated: int = 0
     errors: list[ErrorDetail] = []
 
 

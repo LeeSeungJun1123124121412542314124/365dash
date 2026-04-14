@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.api import auth, dashboard, upload
+from app.api import auth, complaint, dashboard, nps, participation, praise, upload
 from app.core.config import settings
 
 
@@ -36,6 +36,10 @@ if settings.cors_origins_list:
 app.include_router(auth.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
 app.include_router(upload.router, prefix="/api")
+app.include_router(participation.router, prefix="/api")
+app.include_router(nps.router, prefix="/api")
+app.include_router(praise.router, prefix="/api")
+app.include_router(complaint.router, prefix="/api")
 
 
 @app.get("/api/health")
