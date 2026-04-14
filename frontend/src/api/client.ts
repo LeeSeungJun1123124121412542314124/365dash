@@ -1,7 +1,8 @@
 import axios from "axios";
 
 const apiClient = axios.create({
-  baseURL: import.meta.env.DEV ? "http://localhost:8000/api" : "/api",
+  // Vite proxy (/api → localhost:8001) 사용 — 개발/운영 모두 상대 경로
+  baseURL: "/api",
   timeout: 30000,
 });
 
@@ -20,6 +21,7 @@ apiClient.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       localStorage.removeItem("access_token");
+      localStorage.removeItem("user_role");
       window.location.href = "/login";
     }
     return Promise.reject(error);
