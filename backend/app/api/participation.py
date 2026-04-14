@@ -5,18 +5,16 @@ from fastapi import APIRouter, Depends, Query
 from sqlmodel import select, func
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.core.deps import get_current_user, get_session
-from app.db.models import Branch, BranchGroup, ParticipationData
+from app.core.deps import get_current_user, get_data_filter, get_session
+from app.db.models import Branch, ParticipationData
 from app.schemas.common import ChartPoint, ScoreCard
 from app.services.month_window import recent_months
 
 router = APIRouter(prefix="/participation", tags=["참여율"])
 
 
-def _participation_rate(target: int, participant: int) -> Optional[float]:
-    if not target:
-        return None
-    return round(participant * 100.0 / target, 1)
+def _rate(target: int, participant: int) -> Optional[float]:
+    return round(participant * 100.0 / target, 1) if target else None
 
 
 @router.get("/summary")
@@ -24,79 +22,50 @@ async def get_participation_summary(
     months: int = Query(default=6, ge=1, le=24),
     group_id: Optional[int] = Query(default=None),
     branch_id: Optional[int] = Query(default=None),
-    user: dict = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: Annotated[dict, Depends(get_current_user)] = None,
+    session: Annotated[AsyncSession, Depends(get_session)] = None,
 ):
-    """스코어카드 + 추이 차트 데이터."""
-    period = recent_months(months)  # [(year, month), ...]
+    # 역할 기반 필터 (admin은 쿼리 파라미터 우선, 그 외는 강제 적용)
+    perm = get_data_filter(user)
+    eff_group  = perm["group_id"]  if perm["group_id"]  is not None else group_id
+    eff_branch = perm["branch_id"] if perm["branch_id"] is not None else branch_id
 
-    # 기준값: 전체 / 필터값: 선택된 그룹 or 지점
-    rows_base = []
-    rows_filter = []
+    period = recent_months(months)
+    chart = []
 
     for year, month in period:
-        # 기준값 쿼리 (전체 집계)
-        q_base = (
+        # 기준값 (전체)
+        rb = (await session.exec(
             select(
-                func.sum(ParticipationData.target_count).label("target"),
-                func.sum(ParticipationData.participant_count).label("participant"),
-            )
-            .where(ParticipationData.year == year, ParticipationData.month == month)
-        )
-        res_base = (await session.exec(q_base)).first()
-        target_b = res_base.target or 0
-        part_b = res_base.participant or 0
+                func.sum(ParticipationData.target_count).label("t"),
+                func.sum(ParticipationData.participant_count).label("p"),
+            ).where(ParticipationData.year == year, ParticipationData.month == month)
+        )).first()
 
-        # 필터값 쿼리
-        q_filter = (
-            select(
-                func.sum(ParticipationData.target_count).label("target"),
-                func.sum(ParticipationData.participant_count).label("participant"),
-            )
-            .where(ParticipationData.year == year, ParticipationData.month == month)
-        )
-        if group_id:
-            q_filter = q_filter.join(Branch, Branch.id == ParticipationData.branch_id).where(
-                Branch.group_id == group_id
-            )
-        if branch_id:
-            q_filter = q_filter.where(ParticipationData.branch_id == branch_id)
+        # 필터값
+        qf = select(
+            func.sum(ParticipationData.target_count).label("t"),
+            func.sum(ParticipationData.participant_count).label("p"),
+        ).where(ParticipationData.year == year, ParticipationData.month == month)
+        if eff_group:
+            qf = qf.join(Branch, Branch.id == ParticipationData.branch_id).where(Branch.group_id == eff_group)
+        elif eff_branch:
+            qf = qf.where(ParticipationData.branch_id == eff_branch)
+        rf = (await session.exec(qf)).first()
 
-        res_filter = (await session.exec(q_filter)).first()
-        target_f = res_filter.target or 0
-        part_f = res_filter.participant or 0
-
-        label = f"{month}월"
-        rows_base.append(ChartPoint(
-            label=label,
-            baseline=_participation_rate(target_b, part_b),
-        ))
-        rows_filter.append(ChartPoint(
-            label=label,
-            value=_participation_rate(target_f, part_f),
+        chart.append(ChartPoint(
+            label=f"{month}월",
+            baseline=_rate(rb.t or 0, rb.p or 0),
+            value=_rate(rf.t or 0, rf.p or 0),
         ))
 
-    # 최신 월 스코어카드
-    latest = rows_filter[-1] if rows_filter else None
-    prev = rows_filter[-2] if len(rows_filter) >= 2 else None
-    current_val = latest.value if latest else None
-    prev_val = prev.value if prev else None
+    latest = chart[-1] if chart else None
+    prev   = chart[-2] if len(chart) >= 2 else None
     change = None
-    if current_val is not None and prev_val:
-        change = round(current_val - prev_val, 1)
-
-    # 차트: 기준값과 필터값 합치기
-    chart = [
-        ChartPoint(label=b.label, baseline=b.baseline, value=f.value)
-        for b, f in zip(rows_base, rows_filter)
-    ]
+    if latest and latest.value is not None and prev and prev.value is not None:
+        change = round(latest.value - prev.value, 1)
 
     return {
-        "scorecard": ScoreCard(
-            label="이번달 참여율",
-            value=current_val,
-            unit="%",
-            change=change,
-        ),
+        "scorecard": ScoreCard(label="이번달 참여율", value=latest.value if latest else None, unit="%", change=change),
         "trend": chart,
     }

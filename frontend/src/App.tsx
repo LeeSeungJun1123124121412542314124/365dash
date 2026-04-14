@@ -9,6 +9,7 @@ import NpsPage from "./pages/NpsPage";
 import PraisePage from "./pages/PraisePage";
 import ComplaintPage from "./pages/ComplaintPage";
 import UploadPage from "./pages/UploadPage";
+import UsersPage from "./pages/UsersPage";
 import { getToken } from "./api/auth";
 
 const queryClient = new QueryClient({
@@ -44,6 +45,7 @@ export default function App() {
             <Route path="/praise" element={<PraisePage />} />
             <Route path="/complaint" element={<ComplaintPage />} />
             <Route path="/upload" element={<UploadPage />} />
+            <Route path="/users" element={<UsersPage />} />
           </Route>
         </Routes>
       </BrowserRouter>

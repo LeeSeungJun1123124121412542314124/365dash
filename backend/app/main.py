@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.api import auth, branches, complaint, dashboard, nps, participation, praise, upload
+from app.api import auth, branches, complaint, dashboard, nps, participation, praise, upload, users
 from app.core.config import settings
 
 
@@ -41,6 +41,7 @@ app.include_router(participation.router, prefix="/api")
 app.include_router(nps.router, prefix="/api")
 app.include_router(praise.router, prefix="/api")
 app.include_router(complaint.router, prefix="/api")
+app.include_router(users.router, prefix="/api")
 
 
 @app.get("/api/health")

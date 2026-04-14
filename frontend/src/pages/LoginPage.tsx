@@ -21,7 +21,7 @@ export default function LoginPage() {
     setError(null);
     try {
       const result = await login(username, password);
-      saveToken(result.access_token, result.role);
+      saveToken(result.access_token, result.role, result.display_name ?? "");
       navigate("/", { replace: true });
     } catch (err: any) {
       const msg = err?.response?.data?.detail ?? "로그인 중 오류가 발생했습니다.";

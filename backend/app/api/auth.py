@@ -28,5 +28,17 @@ async def login(
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="비활성화된 계정입니다.")
 
-    token = create_access_token(subject=user.username, role=user.role)
-    return {"access_token": token, "token_type": "bearer", "role": user.role}
+    token = create_access_token(
+        subject=user.username,
+        role=user.role,
+        user_id=user.id,
+        branch_id=user.branch_id,
+        group_id=user.group_id,
+        display_name=user.display_name,
+    )
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "role": user.role,
+        "display_name": user.display_name,
+    }

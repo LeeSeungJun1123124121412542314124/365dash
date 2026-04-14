@@ -111,8 +111,8 @@ async def upload_excel(
             upload_type=upload_type,
             year=records[0]["year"],
             month=records[0]["month"],
-            branch_id=1,  # 배치 업로드이므로 대표값; 필요시 다중 로그로 확장
-            uploaded_by=1,  # TODO: user["id"] 로 교체 (JWT에 id 추가 후)
+            branch_id=records[0].get("branch_id") or 1,
+            uploaded_by=user["user_id"],
             row_count=len(records),
         )
         session.add(log)

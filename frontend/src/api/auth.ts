@@ -4,6 +4,7 @@ export interface LoginResult {
   access_token: string;
   token_type: string;
   role: string;
+  display_name?: string;
 }
 
 export async function login(username: string, password: string): Promise<LoginResult> {
@@ -18,14 +19,16 @@ export async function login(username: string, password: string): Promise<LoginRe
   return data;
 }
 
-export function saveToken(token: string, role: string) {
+export function saveToken(token: string, role: string, displayName = "") {
   localStorage.setItem("access_token", token);
   localStorage.setItem("user_role", role);
+  localStorage.setItem("display_name", displayName);
 }
 
 export function clearToken() {
   localStorage.removeItem("access_token");
   localStorage.removeItem("user_role");
+  localStorage.removeItem("display_name");
 }
 
 export function getToken(): string | null {
