@@ -1,0 +1,62 @@
+# ======================
+# Python / Backend
+# ======================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.venv/
+venv/
+env/
+ENV/
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+*.cover
+.hypothesis/
+
+# ======================
+# Node / Frontend
+# ======================
+node_modules/
+frontend/dist/
+frontend/.vite/
+.npm
+*.tsbuildinfo
+
+# ======================
+# 환경 변수 (절대 커밋 금지)
+# ======================
+.env
+.env.local
+.env.*.local
+
+# ======================
+# IDE / OS
+# ======================
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ======================
+# 기타
+# ======================
+*.log
+*.tmp
+*.bak
+*.dump
