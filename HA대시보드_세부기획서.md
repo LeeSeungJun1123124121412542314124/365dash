@@ -23,7 +23,7 @@
 | 보통이하 | 보통 + 불만족 + 매우불만족 합산 |
 | 기준값 | 필터 미적용 기본값 (전체 지점 + 전체 기간) |
 | 필터값 | 사용자가 선택한 필터 조건에 해당하는 값 |
-| 월 집계 기준 | **전월 26일 00:00 ~ 당월 25일 23:59** (전 화면 동일) |
+| 월 집계 기준 | 엑셀 업로드 시 입력된 연도/월 값을 그대로 사용. 전월 26일~당월 25일 윈도우는 업로드자가 엑셀 작성 시 반영 (시스템 자동 재배정 없음) |
 | 지점군 | 병원급 / 람스+시술 / 람스 3개 대분류 |
 
 ### 1.3 지점 구조
@@ -385,7 +385,7 @@ month_window(year Y, month M):
 
 ### 5.0 공통
 
-- **Base URL**: `/api/v1`
+- **Base URL**: `/api`
 - **인증**: `Authorization: Bearer {JWT}` 필수 (전 엔드포인트)
 - **권한 가드**: 응답 데이터는 로그인 사용자 권한 범위로 자동 필터링
 - **에러 형식**:
@@ -397,8 +397,7 @@ month_window(year Y, month M):
 
 | 파라미터 | 타입 | 기본값 | 설명 |
 |---------|------|--------|------|
-| year | integer | 현재 연도 | 조회 연도 |
-| month | integer | 현재 월 | 조회 월 (0 = 전체) |
+| months | integer | 6 | 최근 N개월 조회 (1~24) |
 | group_id | integer | null | 대분류 ID (null = 전체 합산) |
 | branch_id | integer | null | 중분류 ID (null = 전체) |
 
@@ -439,7 +438,7 @@ month_window(year Y, month M):
 
 ---
 
-### 5.2 GET /participation
+### 5.2 GET /participation/summary
 
 ```json
 {
@@ -447,9 +446,9 @@ month_window(year Y, month M):
   "chart": {
     "series": [
       { "label": "기준값 (전체)", "type": "line",
-        "data": [{ "x": "2026-01", "y": 51.7 }] },
+        "data": [{ "x": "2026-01", "rate": 51.7 }] },
       { "label": "필터값 (선택 지점/군)", "type": "line",
-        "data": [{ "x": "2026-01", "y": 48.2 }] }
+        "data": [{ "x": "2026-01", "rate": 48.2 }] }
     ]
   }
 }
@@ -459,7 +458,7 @@ month_window(year Y, month M):
 
 ---
 
-### 5.3 GET /nps
+### 5.3 GET /nps/summary
 
 **추가 파라미터**: `nps_level` (all | very_satisfied | satisfied | below_normal)
 
@@ -482,7 +481,7 @@ month_window(year Y, month M):
 
 ---
 
-### 5.4 GET /praise
+### 5.4 GET /praise/summary
 
 ```json
 {
@@ -502,7 +501,7 @@ month_window(year Y, month M):
 
 ---
 
-### 5.5 GET /complaint
+### 5.5 GET /complaint/summary
 
 praise와 동일 구조. `surgery` → `surgery_complaint`, `lams` → `lams_complaint`, `lams_surgery` → `lams_surgery_complaint`.
 
@@ -516,9 +515,9 @@ praise와 동일 구조. `surgery` → `surgery_complaint`, `lams` → `lams_com
     {
       "year": 2026, "month": 3,
       "group_name": "병원급", "branch_name": "서울병원",
-      "parking": 2, "guidance": 5, "waiting": 3,
-      "rudeness": 1, "system": 0, "privacy": 0,
-      "environment": 1, "other": 3, "total": 15
+      "주차": 2, "안내 응대부족": 5, "대기관련": 3,
+      "불친절": 1, "시스템불만": 0, "개인정보": 0,
+      "환경불만": 1, "기타": 3, "total": 15
     }
   ]
 }
@@ -559,7 +558,7 @@ praise와 동일 구조. `surgery` → `surgery_complaint`, `lams` → `lams_com
 
 ### 6.1 메인대시보드
 
-**URL**: `/dashboard`
+**URL**: `/`
 
 #### 스코어카드 (4개)
 
@@ -735,47 +734,29 @@ Y축 레이블: "불만 개수 (건)", 스코어카드: "기준값 불만 총계
 
 ---
 
-### 6.7 업로드 게시판 — 참여율 업로드
+### 6.7 업로드 게시판
 
-**URL**: `/upload/participation`
+**URL**: `/upload` (탭으로 참여율 / NPS / 칭찬 / 불만 전환)
+
+> 4개 업로드 유형을 단일 페이지 탭 방식으로 제공.
 
 #### UX 흐름
 
-1. [엑셀 파일 업로드 버튼] 클릭 → 파일 선택 다이얼로그
-2. 파일 선택 → 클라이언트에서 미리보기 파싱 (참여율 자동 계산 포함)
-3. 미리보기 테이블 표시 (검증 오류 행 빨간 배경 강조)
-4. [저장 및 업로드 버튼] 클릭 → `POST /api/v1/upload/participation`
-5. 성공: "n건 업로드 완료" 토스트 메시지
-6. 실패: 오류 목록 (행/컬럼/메시지) 표시, 저장 안 됨
+1. 탭(참여율/NPS/칭찬/불만) 선택
+2. 엑셀 파일 드래그 또는 클릭 선택
+3. 파일 선택 → SheetJS 클라이언트 파싱 → **미리보기 테이블** 표시 (필수 컬럼 미일치 시 즉시 빨간 강조)
+4. [업로드 버튼] 클릭 → `POST /api/upload/{type}` 전송
+5. 성공: "n건 처리 완료" 메시지
+6. 실패: 서버 오류 목록 (행/컬럼/값/메시지) 표시, 저장 안 됨
 
-#### 미리보기 테이블 컬럼
+#### 업로드 API 경로
 
-연도 | 월 | 지점명 | 참여대상 | 참여자 수 | 참여율(자동계산)
-
----
-
-### 6.8 업로드 게시판 — NPS 업로드
-
-**URL**: `/upload/nps`
-
-6.7과 동일한 UX 흐름. 미리보기 테이블에 보통이하(자동계산) / 총개수(자동계산) 컬럼 포함.
-
----
-
-### 6.9 업로드 게시판 — 칭찬 업로드
-
-**URL**: `/upload/praise`
-
-6.7과 동일. 미리보기 테이블: No.(자동채번) | 유입경로 | 지점명 | 연도 | 월 | 일 | 칭찬내용 | 칭찬대상자
-
----
-
-### 6.10 업로드 게시판 — 불만 업로드
-
-**URL**: `/upload/complaint`
-
-6.7과 동일. 불만카테고리선택 컬럼 값이 8개 enum 외 값이면 즉시 강조.  
-미리보기 테이블: No. | 연도 | 월 | 일 | 지점명 | 유입경로 | 불만내용 | 불만카테고리선택
+| 탭 | 엔드포인트 |
+|---|---|
+| 참여율 | `POST /api/upload/participation` |
+| NPS    | `POST /api/upload/nps` |
+| 칭찬   | `POST /api/upload/praise` |
+| 불만   | `POST /api/upload/complaint` |
 
 ---
 

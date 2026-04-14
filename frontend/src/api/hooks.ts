@@ -83,7 +83,7 @@ export function useParticipationSummary(params: FilterParams) {
 
 // ── NPS ─────────────────────────────────────────────────────────
 
-export function useNpsSummary(params: FilterParams) {
+export function useNpsSummary(params: FilterParams & { nps_level?: string }) {
   return useQuery({
     queryKey: ["nps", "summary", params],
     queryFn: () =>

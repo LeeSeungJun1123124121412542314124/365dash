@@ -23,11 +23,20 @@ def _pct(val: int, total: int) -> Optional[float]:
     return round(val / total * 100, 1) if total else None
 
 
+NPS_LEVEL_KEYS = {
+    "all":            ("very_satisfied_pct", "satisfied_pct", "below_normal_pct"),
+    "very_satisfied": ("very_satisfied_pct",),
+    "satisfied":      ("satisfied_pct",),
+    "below_normal":   ("below_normal_pct",),
+}
+
+
 @router.get("/summary")
 async def get_nps_summary(
     months: int = Query(default=6, ge=1, le=24),
     group_id: Optional[int] = Query(default=None),
     branch_id: Optional[int] = Query(default=None),
+    nps_level: str = Query(default="all", pattern="^(all|very_satisfied|satisfied|below_normal)$"),
     user: Annotated[dict, Depends(get_current_user)] = None,
     session: Annotated[AsyncSession, Depends(get_session)] = None,
 ):
@@ -68,18 +77,19 @@ async def get_nps_summary(
         below_b = n_b + d_b + vd_b
         below_f = n_f + d_f + vd_f
 
-        baseline_series.append({
-            "x": label,
+        all_b = {
             "very_satisfied_pct": _pct(vs_b, total_b),
             "satisfied_pct": _pct(s_b, total_b),
             "below_normal_pct": _pct(below_b, total_b),
-        })
-        filtered_series.append({
-            "x": label,
+        }
+        all_f = {
             "very_satisfied_pct": _pct(vs_f, total_f),
             "satisfied_pct": _pct(s_f, total_f),
             "below_normal_pct": _pct(below_f, total_f),
-        })
+        }
+        keys = NPS_LEVEL_KEYS.get(nps_level, NPS_LEVEL_KEYS["all"])
+        baseline_series.append({"x": label, **{k: all_b[k] for k in keys}})
+        filtered_series.append({"x": label, **{k: all_f[k] for k in keys}})
 
     # 최신 월 스코어카드
     scorecard = {}

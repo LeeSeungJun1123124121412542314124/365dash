@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { read, utils } from "xlsx";
 import { UploadCloud, FileSpreadsheet, CheckCircle, AlertCircle, X } from "lucide-react";
 import apiClient from "../api/client";
 
@@ -7,8 +8,8 @@ type UploadType = "participation" | "nps" | "praise" | "complaint";
 const UPLOAD_LABELS: Record<UploadType, { label: string; desc: string; cols: string[] }> = {
   participation: {
     label: "참여율",
-    desc: "연도 / 월 / 지점명 / 참여대상 수 / 참여자 수",
-    cols: ["연도", "월", "지점명", "참여대상 수", "참여자 수"],
+    desc: "연도 / 월 / 지점명 / 참여대상 / 참여자 수",
+    cols: ["연도", "월", "지점명", "참여대상", "참여자 수"],
   },
   nps: {
     label: "NPS",
@@ -33,6 +34,29 @@ interface UploadResult {
   errors: Array<{ row: number; column: string; message: string; value?: any }>;
 }
 
+// SheetJS로 엑셀 파싱 → 헤더 + 행 배열 반환
+function parseExcel(file: File): Promise<{ headers: string[]; rows: any[][] }> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const wb = read(e.target?.result, { type: "array" });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const raw: any[][] = utils.sheet_to_json(ws, { header: 1, defval: "" });
+        const headers = (raw[0] ?? []).map(String);
+        const rows = raw.slice(1).filter((r) => r.some((c) => c !== ""));
+        resolve({ headers, rows });
+      } catch (err) {
+        reject(err);
+      }
+    };
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+const PREVIEW_ROWS = 5; // 미리보기 최대 행 수
+
 export default function UploadPage() {
   const [activeType, setActiveType] = useState<UploadType>("participation");
   const [dragOver, setDragOver] = useState(false);
@@ -41,22 +65,41 @@ export default function UploadPage() {
   const [status, setStatus] = useState<"idle" | "ready" | "uploading" | "success" | "error">("idle");
   const [result, setResult] = useState<UploadResult | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [preview, setPreview] = useState<{ headers: string[]; rows: any[][] } | null>(null);
+  const [missingCols, setMissingCols] = useState<string[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const info = UPLOAD_LABELS[activeType];
 
-  function handleFile(f: File) {
+  async function handleFile(f: File) {
     if (!f.name.match(/\.(xlsx|xls)$/i)) {
       setStatus("error");
       setErrorMsg(".xlsx 또는 .xls 파일만 업로드 가능합니다.");
       setFileName(null);
       setFile(null);
+      setPreview(null);
       return;
     }
     setFileName(f.name);
     setFile(f);
-    setStatus("ready");
     setResult(null);
     setErrorMsg(null);
+
+    // SheetJS 클라이언트 미리보기 파싱
+    try {
+      const parsed = await parseExcel(f);
+      setPreview(parsed);
+      // 필수 컬럼 누락 검사
+      const missing = info.cols.filter((c) => !parsed.headers.includes(c));
+      setMissingCols(missing);
+      setStatus(missing.length === 0 ? "ready" : "error");
+      if (missing.length > 0) {
+        setErrorMsg(`필수 컬럼 누락: ${missing.join(", ")}`);
+      }
+    } catch {
+      setPreview(null);
+      setMissingCols([]);
+      setStatus("ready"); // 파싱 실패해도 서버로 전송은 허용
+    }
   }
 
   function reset() {
@@ -65,6 +108,8 @@ export default function UploadPage() {
     setStatus("idle");
     setResult(null);
     setErrorMsg(null);
+    setPreview(null);
+    setMissingCols([]);
     if (inputRef.current) inputRef.current.value = "";
   }
 
@@ -139,6 +184,8 @@ export default function UploadPage() {
                 ? "border-violet-400 bg-violet-50"
                 : status === "ready"
                 ? "border-green-300 bg-green-50"
+                : status === "error" && fileName
+                ? "border-red-300 bg-red-50"
                 : "border-gray-200 hover:border-violet-300 hover:bg-violet-50/30"
             }`}
           >
@@ -152,12 +199,14 @@ export default function UploadPage() {
                 if (f) handleFile(f);
               }}
             />
-
-            {status === "ready" ? (
+            {fileName ? (
               <div className="flex flex-col items-center gap-2">
-                <FileSpreadsheet size={40} className="text-green-500" />
-                <p className="text-sm font-medium text-green-700">{fileName}</p>
-                <p className="text-xs text-gray-400">파일 선택됨 — 아래 업로드 버튼을 클릭하세요</p>
+                <FileSpreadsheet size={40} className={missingCols.length > 0 ? "text-red-400" : "text-green-500"} />
+                <p className="text-sm font-medium text-gray-700">{fileName}</p>
+                <p className="text-xs text-gray-400">
+                  {preview ? `${preview.rows.length}행 감지됨` : "파일 선택됨"}
+                  {" — 아래 업로드 버튼을 클릭하세요"}
+                </p>
               </div>
             ) : (
               <div className="flex flex-col items-center gap-2">
@@ -177,14 +226,14 @@ export default function UploadPage() {
               <span>업로드 성공! {result.uploaded_count}건 처리 완료</span>
             </div>
           )}
-          {status === "error" && (
+          {(status === "error" || missingCols.length > 0) && errorMsg && (
             <div className="flex items-start gap-2 text-red-500 bg-red-50 rounded-xl px-4 py-3 text-sm">
               <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
-              <span>{errorMsg ?? "오류가 발생했습니다."}</span>
+              <span>{errorMsg}</span>
             </div>
           )}
 
-          {/* 행별 에러 목록 */}
+          {/* 서버 행별 에러 목록 */}
           {result?.errors && result.errors.length > 0 && (
             <div className="bg-red-50 rounded-xl px-4 py-3 space-y-1 max-h-40 overflow-y-auto">
               {result.errors.map((e, i) => (
@@ -216,27 +265,78 @@ export default function UploadPage() {
           </div>
         </div>
 
-        {/* 컬럼 명세 */}
+        {/* 오른쪽: 미리보기 or 컬럼 명세 */}
         <div className="card p-6">
-          <h3 className="text-sm font-bold text-gray-700 mb-4">업로드 양식 컬럼</h3>
-          <div className="space-y-2">
-            {info.cols.map((col, i) => (
-              <div key={col} className="flex items-center gap-3 px-3 py-2 rounded-xl bg-gray-50">
-                <span className="w-5 h-5 rounded-full bg-violet-100 text-violet-600 text-xs font-bold flex items-center justify-center flex-shrink-0">
-                  {i + 1}
+          {preview ? (
+            <>
+              <h3 className="text-sm font-bold text-gray-700 mb-4">
+                미리보기
+                <span className="ml-2 text-xs font-normal text-gray-400">
+                  (상위 {Math.min(PREVIEW_ROWS, preview.rows.length)}행 / 전체 {preview.rows.length}행)
                 </span>
-                <span className="text-sm text-gray-700 font-medium">{col}</span>
-                {i < 3 && (
-                  <span className="ml-auto text-xs bg-red-100 text-red-500 px-2 py-0.5 rounded-full font-medium">
-                    필수
-                  </span>
-                )}
+              </h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs border-collapse">
+                  <thead>
+                    <tr>
+                      {preview.headers.map((h, i) => (
+                        <th
+                          key={i}
+                          className={`px-3 py-2 text-left font-semibold whitespace-nowrap border-b border-gray-200 ${
+                            missingCols.includes(h)
+                              ? "bg-red-50 text-red-500"
+                              : info.cols.includes(h)
+                              ? "bg-violet-50 text-violet-700"
+                              : "bg-gray-50 text-gray-500"
+                          }`}
+                        >
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {preview.rows.slice(0, PREVIEW_ROWS).map((row, ri) => (
+                      <tr key={ri} className="border-b border-gray-50 hover:bg-gray-50">
+                        {preview.headers.map((_, ci) => (
+                          <td key={ci} className="px-3 py-2 text-gray-600 whitespace-nowrap">
+                            {String(row[ci] ?? "")}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-            ))}
-          </div>
-          <p className="text-xs text-gray-400 mt-4">
-            * 동일 연도/월/지점 데이터 재업로드 시 최신 데이터로 덮어씁니다.
-          </p>
+              {missingCols.length > 0 && (
+                <p className="text-xs text-red-500 mt-3">
+                  누락된 필수 컬럼: <span className="font-semibold">{missingCols.join(", ")}</span>
+                </p>
+              )}
+            </>
+          ) : (
+            <>
+              <h3 className="text-sm font-bold text-gray-700 mb-4">업로드 양식 컬럼</h3>
+              <div className="space-y-2">
+                {info.cols.map((col, i) => (
+                  <div key={col} className="flex items-center gap-3 px-3 py-2 rounded-xl bg-gray-50">
+                    <span className="w-5 h-5 rounded-full bg-violet-100 text-violet-600 text-xs font-bold flex items-center justify-center flex-shrink-0">
+                      {i + 1}
+                    </span>
+                    <span className="text-sm text-gray-700 font-medium">{col}</span>
+                    {i < 3 && (
+                      <span className="ml-auto text-xs bg-red-100 text-red-500 px-2 py-0.5 rounded-full font-medium">
+                        필수
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-gray-400 mt-4">
+                * 동일 연도/월/지점 데이터 재업로드 시 최신 데이터로 덮어씁니다.
+              </p>
+            </>
+          )}
         </div>
       </div>
     </div>

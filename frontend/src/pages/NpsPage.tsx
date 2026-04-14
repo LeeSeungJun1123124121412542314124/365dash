@@ -15,12 +15,12 @@ const PERIOD_OPTIONS = [
   { label: "6개월", value: "6m" },
 ];
 
-// npsLevel 선택 → series valueKey 매핑
-const NPS_KEY: Record<string, string> = {
-  "전체":    "very_satisfied_pct",
-  "매우만족": "very_satisfied_pct",
-  "만족":    "satisfied_pct",
-  "보통이하": "below_normal_pct",
+// npsLevel UI 값 → API nps_level 파라미터 + series valueKey 매핑
+const NPS_LEVEL_MAP: Record<string, { apiKey: string; valueKey: string }> = {
+  "전체":    { apiKey: "all",            valueKey: "very_satisfied_pct" },
+  "매우만족": { apiKey: "very_satisfied", valueKey: "very_satisfied_pct" },
+  "만족":    { apiKey: "satisfied",      valueKey: "satisfied_pct" },
+  "보통이하": { apiKey: "below_normal",   valueKey: "below_normal_pct" },
 };
 
 function CustomTooltip({ active, payload, label }: any) {
@@ -45,14 +45,15 @@ export default function NpsPage() {
   const [npsLevel, setNpsLevel] = useState("전체");
 
   const months = periodToMonths(period);
+  const { apiKey, valueKey } = NPS_LEVEL_MAP[npsLevel] ?? NPS_LEVEL_MAP["전체"];
   const { data, isLoading } = useNpsSummary({
     months,
     group_id: filter.groupId,
     branch_id: filter.branchId,
+    nps_level: apiKey,
   });
 
   const scorecard = data?.scorecard ?? {};
-  const valueKey = NPS_KEY[npsLevel] ?? "very_satisfied_pct";
   const chartData = seriesToDualChart(data?.chart?.series, valueKey);
 
   return (
