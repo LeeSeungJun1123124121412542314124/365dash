@@ -20,7 +20,7 @@ interface FilterBarProps {
 
 const NPS_LEVEL_OPTIONS = ["전체", "매우만족", "만족", "보통이하"];
 const CURRENT_YEAR = new Date().getFullYear();
-const YEAR_OPTIONS = Array.from({ length: 5 }, (_, i) => CURRENT_YEAR - i);
+const YEAR_OPTIONS = Array.from({ length: 10 }, (_, i) => CURRENT_YEAR - i);
 const MONTH_OPTIONS = Array.from({ length: 12 }, (_, i) => i + 1);
 
 export default function FilterBar({

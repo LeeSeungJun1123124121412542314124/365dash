@@ -37,6 +37,8 @@ export default function ParticipationPage() {
   const months = periodToMonths(period);
   const { data, isLoading } = useParticipationSummary({
     months,
+    year: filter.year,
+    month: filter.month,
     group_id: filter.groupId,
     branch_id: filter.branchId,
   });

@@ -34,6 +34,8 @@ export interface Branch {
 
 interface FilterParams {
   months?: number;
+  year?: number | null;
+  month?: number | null;
   group_id?: number | null;
   branch_id?: number | null;
 }
