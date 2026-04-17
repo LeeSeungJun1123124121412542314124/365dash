@@ -7,7 +7,7 @@ export default defineConfig({
     proxy: {
       // 로컬 개발: /api/* → 백엔드 서버로 프록시
       '/api': {
-        target: 'http://localhost:8001',
+        target: 'http://localhost:8003',
         changeOrigin: true,
       },
     },

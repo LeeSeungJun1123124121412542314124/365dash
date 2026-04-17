@@ -7,7 +7,7 @@ interface Props {
   change?: number;        // % 증감 (양수=상승, 음수=하락)
   changeLabel?: string;   // "전월 대비" 등
   icon?: LucideIcon;
-  iconColor?: string;     // tailwind bg class
+  iconColor?: string;     // 테일윈드 배경색 클래스
   loading?: boolean;
 }
 

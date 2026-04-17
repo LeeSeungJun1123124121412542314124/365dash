@@ -2,10 +2,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    # DB
+    # 데이터베이스
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/365dash"
 
-    # JWT
+    # JWT 인증
     JWT_SECRET: str = "change-me"
     JWT_EXPIRE_MINUTES: int = 480
     JWT_ALGORITHM: str = "HS256"
