@@ -29,26 +29,17 @@ async def get_main_dashboard(
         label = f"{year}-{month:02d}"
 
         # 참여율
-        pr = (await session.exec(
-            select(
-                func.sum(ParticipationData.target_count).label("t"),
-                func.sum(ParticipationData.participant_count).label("p"),
-            ).where(ParticipationData.year == year, ParticipationData.month == month)
-        )).first()
-        rate = round(pr.p / pr.t * 100, 1) if pr.t else None
+        pt = await session.scalar(select(func.sum(ParticipationData.target_count)).where(ParticipationData.year == year, ParticipationData.month == month))
+        pp = await session.scalar(select(func.sum(ParticipationData.participant_count)).where(ParticipationData.year == year, ParticipationData.month == month))
+        rate = round((pp or 0) / pt * 100, 1) if pt else None
         participation_trend.append({"label": label, "rate": rate})
 
-        # NPS — normal 필드명 사용
-        nr = (await session.exec(
-            select(
-                func.sum(NpsData.very_satisfied).label("vs"),
-                func.sum(NpsData.satisfied).label("s"),
-                func.sum(NpsData.normal).label("n"),
-                func.sum(NpsData.dissatisfied).label("d"),
-                func.sum(NpsData.very_dissatisfied).label("vd"),
-            ).where(NpsData.year == year, NpsData.month == month)
-        )).first()
-        vs, s, n, d, vd = (nr.vs or 0, nr.s or 0, nr.n or 0, nr.d or 0, nr.vd or 0)
+        # NPS
+        vs = await session.scalar(select(func.sum(NpsData.very_satisfied)).where(NpsData.year == year, NpsData.month == month)) or 0
+        s  = await session.scalar(select(func.sum(NpsData.satisfied)).where(NpsData.year == year, NpsData.month == month)) or 0
+        n  = await session.scalar(select(func.sum(NpsData.normal)).where(NpsData.year == year, NpsData.month == month)) or 0
+        d  = await session.scalar(select(func.sum(NpsData.dissatisfied)).where(NpsData.year == year, NpsData.month == month)) or 0
+        vd = await session.scalar(select(func.sum(NpsData.very_dissatisfied)).where(NpsData.year == year, NpsData.month == month)) or 0
         total = vs + s + n + d + vd
         below = n + d + vd
         nps_trend.append({
@@ -59,18 +50,12 @@ async def get_main_dashboard(
         })
 
         # 칭찬 (행 단위 COUNT)
-        pc = (await session.exec(
-            select(func.count(PraiseData.id).label("cnt"))
-            .where(PraiseData.year == year, PraiseData.month == month)
-        )).first()
-        praise_trend.append({"label": label, "count": pc.cnt or 0})
+        praise_cnt = await session.scalar(select(func.count(PraiseData.id)).where(PraiseData.year == year, PraiseData.month == month))
+        praise_trend.append({"label": label, "count": praise_cnt or 0})
 
         # 불만 (행 단위 COUNT)
-        cc = (await session.exec(
-            select(func.count(ComplaintData.id).label("cnt"))
-            .where(ComplaintData.year == year, ComplaintData.month == month)
-        )).first()
-        complaint_trend.append({"label": label, "count": cc.cnt or 0})
+        complaint_cnt = await session.scalar(select(func.count(ComplaintData.id)).where(ComplaintData.year == year, ComplaintData.month == month))
+        complaint_trend.append({"label": label, "count": complaint_cnt or 0})
 
     # 스코어카드 — 최근 N개월 평균
     def _avg(values):

@@ -26,18 +26,35 @@ export function toChartData(
   }));
 }
 
-/** 현재 날짜 기준 FilterBar 초기값 */
-export function defaultFilter() {
+/** NPS 페이지 전용 초기값 (끝=현재월, 시작=3년 전 동월) */
+export function npsDefaultFilter() {
   const now = new Date();
+  const endYear = now.getFullYear();
+  const endMonth = now.getMonth() + 1;
   return {
     groupId: null as number | null,
     branchId: null as number | null,
-    year: now.getFullYear(),
-    month: now.getMonth() + 1,
+    startYear: endYear - 3,
+    startMonth: endMonth,
+    endYear,
+    endMonth,
   };
 }
 
-/** 월 수 → API months 파라미터 변환 */
-export function periodToMonths(period: string): number {
-  return period === "3m" ? 3 : 6;
+/** 현재 날짜 기준 FilterBar 초기값 (끝=현재월, 시작=1년 전 동월) */
+export function defaultFilter() {
+  const now = new Date();
+  const endYear = now.getFullYear();
+  const endMonth = now.getMonth() + 1;
+  // 1년 전 동월
+  const startYear = endYear - 1;
+  const startMonth = endMonth;
+  return {
+    groupId: null as number | null,
+    branchId: null as number | null,
+    startYear,
+    startMonth,
+    endYear,
+    endMonth,
+  };
 }

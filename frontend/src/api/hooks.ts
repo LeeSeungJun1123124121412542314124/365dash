@@ -33,9 +33,10 @@ export interface Branch {
 // ── 공통 파라미터 ────────────────────────────────────────────────
 
 interface FilterParams {
-  months?: number;
-  year?: number | null;
-  month?: number | null;
+  start_year?: number;
+  start_month?: number;
+  end_year?: number;
+  end_month?: number;
   group_id?: number | null;
   branch_id?: number | null;
 }

@@ -8,7 +8,6 @@ import { TrendingUp, Star, ThumbsDown, Users } from "lucide-react";
 import ScoreCard from "../components/ScoreCard";
 import PeriodSelector from "../components/PeriodSelector";
 import { useDashboardMain } from "../api/hooks";
-import { periodToMonths } from "../lib/chartUtils";
 
 const PERIOD_OPTIONS = [
   { label: "3개월", value: "3m" },
@@ -50,7 +49,7 @@ function ChartCard({
 
 export default function MainDashboardPage() {
   const [period, setPeriod] = useState("6m");
-  const months = periodToMonths(period);
+  const months = period === "3m" ? 3 : 6;
   const { data, isLoading } = useDashboardMain(months);
 
   const scorecard = data?.scorecard ?? {};
@@ -107,7 +106,7 @@ export default function MainDashboardPage() {
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
-              <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
+              <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} interval={0} />
               <YAxis tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} domain={[0, 100]} />
               <Tooltip content={<CustomTooltip />} />
               <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
@@ -127,7 +126,7 @@ export default function MainDashboardPage() {
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
-              <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
+              <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} interval={0} />
               <YAxis tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
               <Tooltip content={<CustomTooltip />} />
               <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
@@ -141,7 +140,7 @@ export default function MainDashboardPage() {
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={praiseTrend} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
-              <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
+              <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} interval={0} />
               <YAxis tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
               <Tooltip content={<CustomTooltip />} />
               <Legend iconType="square" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
@@ -155,7 +154,7 @@ export default function MainDashboardPage() {
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={complaintTrend} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
-              <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
+              <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} interval={0} />
               <YAxis tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
               <Tooltip content={<CustomTooltip />} />
               <Legend iconType="square" iconSize={8} wrapperStyle={{ fontSize: 11 }} />

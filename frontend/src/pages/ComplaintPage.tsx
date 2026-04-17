@@ -6,14 +6,8 @@ import {
 import { ThumbsDown } from "lucide-react";
 import ScoreCard from "../components/ScoreCard";
 import FilterBar, { type FilterValue } from "../components/FilterBar";
-import PeriodSelector from "../components/PeriodSelector";
 import { useComplaintSummary, useComplaintKeywords } from "../api/hooks";
-import { defaultFilter, periodToMonths, seriesToDualChart } from "../lib/chartUtils";
-
-const PERIOD_OPTIONS = [
-  { label: "3개월", value: "3m" },
-  { label: "6개월", value: "6m" },
-];
+import { defaultFilter, seriesToDualChart } from "../lib/chartUtils";
 
 const KEYWORD_COLS = [
   "주차", "안내 응대부족", "대기관련", "불친절",
@@ -37,20 +31,19 @@ function CustomTooltip({ active, payload, label }: any) {
 export default function ComplaintPage() {
   const [tab, setTab] = useState<"overview" | "keywords">("overview");
   const [filter, setFilter] = useState<FilterValue>(defaultFilter());
-  const [period, setPeriod] = useState("6m");
-  const [showBaseline, setShowBaseline] = useState(true);
-
-  const months = periodToMonths(period);
 
   const { data: summaryData, isLoading: summaryLoading } = useComplaintSummary({
-    months,
+    start_year: filter.startYear,
+    start_month: filter.startMonth,
+    end_year: filter.endYear,
+    end_month: filter.endMonth,
     group_id: filter.groupId,
     branch_id: filter.branchId,
   });
 
   const { data: keywordData, isLoading: keywordLoading } = useComplaintKeywords({
-    year: tab === "keywords" ? filter.year : null,
-    month: tab === "keywords" ? filter.month : null,
+    year: tab === "keywords" ? filter.endYear : null,
+    month: tab === "keywords" ? filter.endMonth : null,
     group_id: filter.groupId,
     branch_id: filter.branchId,
   });
@@ -86,35 +79,18 @@ export default function ComplaintPage() {
           </div>
 
           <div className="card p-5">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="text-sm font-bold text-gray-700">불만현황 비교</h3>
-                <p className="text-xs text-gray-400 mt-0.5">기준값 vs 필터값 클러스터 막대</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setShowBaseline((v) => !v)}
-                  className={`text-xs px-3 py-1 rounded-lg border transition-colors ${
-                    showBaseline
-                      ? "border-red-300 text-red-500 bg-red-50"
-                      : "border-gray-200 text-gray-400"
-                  }`}
-                >
-                  기준값 {showBaseline ? "숨기기" : "표시"}
-                </button>
-                <PeriodSelector options={PERIOD_OPTIONS} value={period} onChange={setPeriod} />
-              </div>
+            <div className="mb-4">
+              <h3 className="text-sm font-bold text-gray-700">불만현황 비교</h3>
+              <p className="text-xs text-gray-400 mt-0.5">기준값 vs 필터값 클러스터 막대</p>
             </div>
             <ResponsiveContainer width="100%" height={260}>
               <BarChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }} barGap={4} barCategoryGap="30%">
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
-                <XAxis dataKey="month" tick={{ fontSize: 12, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
+                <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} interval={0} />
                 <YAxis tick={{ fontSize: 12, fill: "#9ca3af" }} axisLine={false} tickLine={false} unit="건" />
                 <Tooltip content={<CustomTooltip />} />
                 <Legend iconType="square" iconSize={8} wrapperStyle={{ fontSize: 12 }} />
-                {showBaseline && (
-                  <Bar dataKey="기준값" fill="#ef4444" radius={[5, 5, 0, 0]} maxBarSize={30} />
-                )}
+                <Bar dataKey="기준값" fill="#ef4444" radius={[5, 5, 0, 0]} maxBarSize={30} />
                 <Bar dataKey="필터값" fill="#fca5a5" radius={[5, 5, 0, 0]} maxBarSize={30} />
               </BarChart>
             </ResponsiveContainer>

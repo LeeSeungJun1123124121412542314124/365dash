@@ -40,3 +40,19 @@ def get_recent_months(base_year: int, base_month: int, n: int = 6) -> list[tuple
             y -= 1
     months.reverse()
     return months
+
+
+def months_in_range(
+    start_year: int, start_month: int,
+    end_year: int, end_month: int,
+) -> list[tuple[int, int]]:
+    """시작~끝 범위의 (year, month) 목록을 오름차순 반환."""
+    result = []
+    y, m = start_year, start_month
+    while (y, m) <= (end_year, end_month):
+        result.append((y, m))
+        m += 1
+        if m == 13:
+            m = 1
+            y += 1
+    return result

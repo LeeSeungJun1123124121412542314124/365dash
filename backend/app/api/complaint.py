@@ -7,7 +7,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.deps import get_current_user, get_data_filter, get_session
 from app.db.models import Branch, BranchGroup, ComplaintData
-from app.services.month_window import recent_months
+from app.services.month_window import months_in_range
 
 router = APIRouter(prefix="/complaint", tags=["불만"])
 
@@ -63,7 +63,10 @@ async def _count_by_group(
 
 @router.get("/summary")
 async def get_complaint_summary(
-    months: int = Query(default=6, ge=1, le=24),
+    start_year: int = Query(default=2019, ge=2000, le=2100),
+    start_month: int = Query(default=1, ge=1, le=12),
+    end_year: int = Query(default=2019, ge=2000, le=2100),
+    end_month: int = Query(default=12, ge=1, le=12),
     group_id: Optional[int] = Query(default=None),
     branch_id: Optional[int] = Query(default=None),
     user: Annotated[dict, Depends(get_current_user)] = None,
@@ -73,7 +76,7 @@ async def get_complaint_summary(
     eff_group  = perm["group_id"]  if perm["group_id"]  is not None else group_id
     eff_branch = perm["branch_id"] if perm["branch_id"] is not None else branch_id
 
-    period = recent_months(months)
+    period = months_in_range(start_year, start_month, end_year, end_month)
     baseline_series = []
     filtered_series = []
 
