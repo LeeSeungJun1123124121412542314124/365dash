@@ -28,6 +28,7 @@ GROUPS = [
     {"code": "G01", "name": "병원급",      "category": "hospital",      "sort_order": 1},
     {"code": "G02", "name": "람스+시술",   "category": "lams_surgery",  "sort_order": 2},
     {"code": "G03", "name": "람스",        "category": "lams",          "sort_order": 3},
+    {"code": "G04", "name": "기타",        "category": "etc",           "sort_order": 4},
 ]
 
 # ── 지점 19개 ─────────────────────────────────
@@ -48,13 +49,15 @@ BRANCHES = [
     {"code": "S07", "name": "영등포점",   "group_code": "G02"},
     {"code": "S08", "name": "일산점",     "group_code": "G02"},
     {"code": "S09", "name": "천호점",     "group_code": "G02"},
-    {"code": "S10", "name": "구리점",     "group_code": "G02"},
+    {"code": "S10", "name": "구리점",     "group_code": "G04"},
+    {"code": "S11", "name": "강남역점",   "group_code": "G04"},
+    {"code": "S12", "name": "서울람스센터", "group_code": "G02"},
     # 람스 (G03)
     {"code": "L01", "name": "부천점",     "group_code": "G03"},
-    {"code": "L02", "name": "안양평촌",   "group_code": "G03"},
-    {"code": "L03", "name": "천안",       "group_code": "G03"},
-    {"code": "L04", "name": "청주",       "group_code": "G03"},
-    {"code": "L05", "name": "해운대",     "group_code": "G03"},
+    {"code": "L02", "name": "안양평촌점", "group_code": "G03"},
+    {"code": "L03", "name": "천안점",     "group_code": "G03"},
+    {"code": "L04", "name": "청주점",     "group_code": "G03"},
+    {"code": "L05", "name": "해운대점",   "group_code": "G03"},
 ]
 
 # ── 초기 사용자 ────────────────────────────────
@@ -88,25 +91,21 @@ def _make_participation(branch_id: int, year: int, month: int) -> dict:
 
 def _make_nps_rows(branch_id: int, year: int, month: int) -> list[dict]:
     import random
-    rows = []
-    for day in [5, 10, 15, 20, 25]:
-        total = random.randint(30, 80)
-        vs = int(total * 0.8)
-        s = int(total * 0.12)
-        n = total - vs - s
-        rows.append({
-            "branch_id": branch_id,
-            "year": year,
-            "month": month,
-            "day": day,
-            "very_satisfied": vs,
-            "satisfied": s,
-            "normal": max(0, n - 2),
-            "dissatisfied": 1,
-            "very_dissatisfied": 1,
-            "uploaded_at": datetime.utcnow(),
-        })
-    return rows
+    total = random.randint(150, 400)
+    vs = int(total * 0.8)
+    s = int(total * 0.12)
+    n = total - vs - s
+    return [{
+        "branch_id": branch_id,
+        "year": year,
+        "month": month,
+        "very_satisfied": vs,
+        "satisfied": s,
+        "normal": max(0, n - 2),
+        "dissatisfied": 1,
+        "very_dissatisfied": 1,
+        "uploaded_at": datetime.utcnow(),
+    }]
 
 
 PRAISE_CONTENTS = [
@@ -208,7 +207,7 @@ async def seed():
                     part_count += 1
         print(f"[INSERT] ParticipationData {part_count}건")
 
-        # 5. NpsData (19지점 × 3개월 × 5일)
+        # 5. NpsData (19지점 × 3개월)
         nps_count = 0
         for year, month in SAMPLE_MONTHS:
             for code, bid in branch_map.items():
@@ -218,7 +217,6 @@ async def seed():
                             NpsData.branch_id == bid,
                             NpsData.year == year,
                             NpsData.month == month,
-                            NpsData.day == row["day"],
                         )
                     )).first()
                     if not existing:
@@ -232,12 +230,10 @@ async def seed():
             for code, bid in branch_map.items():
                 n = random.randint(3, 10)
                 for i in range(n):
-                    day = random.randint(1, 25)
                     session.add(PraiseData(
                         branch_id=bid,
                         year=year,
                         month=month,
-                        day=day,
                         inflow_path=random.choice(INFLOW_PATHS),
                         content=random.choice(PRAISE_CONTENTS),
                         target_person=f"직원{random.randint(1, 10):02d}",
@@ -252,12 +248,10 @@ async def seed():
             for code, bid in branch_map.items():
                 n = random.randint(1, 4)
                 for i in range(n):
-                    day = random.randint(1, 25)
                     session.add(ComplaintData(
                         branch_id=bid,
                         year=year,
                         month=month,
-                        day=day,
                         inflow_path=random.choice(INFLOW_PATHS),
                         content=random.choice(COMPLAINT_CONTENTS),
                         category=random.choice(COMPLAINT_CATEGORIES),

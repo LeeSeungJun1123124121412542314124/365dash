@@ -17,7 +17,7 @@ class BranchGroup(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     code: str = Field(max_length=10, unique=True)       # 예: G01
     name: str = Field(max_length=50)                    # 병원급 / 람스+시술 / 람스
-    category: str = Field(max_length=20)                # hospital / lams_surgery / lams
+    category: str = Field(max_length=20)                # 병원급 / 람스+시술 / 람스
     sort_order: int = Field(default=0)
 
 
@@ -42,7 +42,7 @@ class User(SQLModel, table=True):
     username: str = Field(max_length=50, unique=True)
     hashed_password: str
     display_name: str = Field(max_length=100)
-    role: str = Field(max_length=20)                    # admin / general_manager / branch_manager / staff
+    role: str = Field(max_length=20)                    # 관리자 / 총괄관리자 / 지점관리자 / 직원
     branch_id: Optional[int] = Field(default=None, foreign_key="branches.id")
     group_id: Optional[int] = Field(default=None, foreign_key="branch_groups.id")
     is_active: bool = Field(default=True)
@@ -57,7 +57,7 @@ class UploadBatch(SQLModel, table=True):
     __tablename__ = "upload_batches"
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    upload_type: str = Field(max_length=20)             # participation / nps / praise / complaint
+    upload_type: str = Field(max_length=20)             # 참여율 / NPS / 칭찬 / 불만
     year: int
     month: int
     branch_id: int = Field(foreign_key="branches.id")
@@ -84,7 +84,7 @@ class ParticipationData(SQLModel, table=True):
 
 
 # ──────────────────────────────────────────
-# NPS 데이터 — §3.5 (UPSERT on branch_id+year+month+day)
+# NPS 데이터 — §3.5 (UPSERT on branch_id+year+month)
 # ──────────────────────────────────────────
 
 class NpsData(SQLModel, table=True):
@@ -94,7 +94,6 @@ class NpsData(SQLModel, table=True):
     branch_id: int = Field(foreign_key="branches.id")
     year: int
     month: int
-    day: int = Field(default=1)                 # §3.5 일자 컬럼
     very_satisfied: int = Field(default=0)      # 매우만족
     satisfied: int = Field(default=0)           # 만족
     normal: int = Field(default=0)              # 보통 (스펙: normal)
@@ -115,7 +114,6 @@ class PraiseData(SQLModel, table=True):
     branch_id: int = Field(foreign_key="branches.id")
     year: int
     month: int
-    day: int
     inflow_path: Optional[str] = Field(default=None, max_length=100)   # 유입경로
     content: str                                                         # 칭찬내용
     target_person: Optional[str] = Field(default=None, max_length=100)  # 칭찬대상자
@@ -140,7 +138,6 @@ class ComplaintData(SQLModel, table=True):
     branch_id: int = Field(foreign_key="branches.id")
     year: int
     month: int
-    day: int
     inflow_path: Optional[str] = Field(default=None, max_length=100)   # 유입경로
     content: str                                                         # 불만내용
     category: str = Field(max_length=20)                                # complaint_category enum 값

@@ -82,7 +82,7 @@ async def _upsert_nps(
     records: list[dict],
     user_id: int,
 ) -> int:
-    """NPS — UPSERT on (branch_id, year, month, day)."""
+    """NPS — UPSERT on (branch_id, year, month)."""
     names = list({r["branch_name"] for r in records})
     branch_map = await _get_branch_map(session, names)
 
@@ -98,7 +98,6 @@ async def _upsert_nps(
                 NpsData.branch_id == bid,
                 NpsData.year == rec["year"],
                 NpsData.month == rec["month"],
-                NpsData.day == rec["day"],
             )
         )).first()
         if existing:
@@ -115,7 +114,6 @@ async def _upsert_nps(
                 branch_id=bid,
                 year=rec["year"],
                 month=rec["month"],
-                day=rec["day"],
                 very_satisfied=rec["very_satisfied"],
                 satisfied=rec["satisfied"],
                 normal=rec["normal"],
@@ -164,7 +162,6 @@ async def _replace_praise(
             branch_id=bid,
             year=rec["year"],
             month=rec["month"],
-            day=rec["day"],
             inflow_path=rec.get("inflow_path"),
             content=rec["content"],
             target_person=rec.get("target_person"),
@@ -208,7 +205,6 @@ async def _replace_complaint(
             branch_id=bid,
             year=rec["year"],
             month=rec["month"],
-            day=rec["day"],
             inflow_path=rec.get("inflow_path"),
             content=rec["content"],
             category=rec["category"],
@@ -262,7 +258,7 @@ async def upload_excel(
             count = await _upsert_nps(session, records, user_id)
         elif upload_type == "praise":
             count = await _replace_praise(session, records, user_id)
-        else:  # complaint
+        else:  # 불만
             count = await _replace_complaint(session, records, user_id)
 
         # 업로드 배치 이력 (첫 레코드 year/month 기준 대표 로그)
