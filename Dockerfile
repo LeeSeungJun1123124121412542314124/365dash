@@ -2,7 +2,7 @@
 FROM node:20-slim AS frontend-build
 WORKDIR /workspace
 COPY frontend/package*.json frontend/
-RUN npm --prefix frontend ci
+RUN npm --prefix frontend install
 COPY frontend/ frontend/
 RUN npm --prefix frontend run build
 
