@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
 import { read, utils } from "xlsx";
 import { UploadCloud, FileSpreadsheet, CheckCircle, AlertCircle, X } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import apiClient from "../api/client";
 
 type UploadType = "participation" | "nps" | "praise" | "complaint";
@@ -58,6 +59,7 @@ function parseExcel(file: File): Promise<{ headers: string[]; rows: any[][] }> {
 const PREVIEW_ROWS = 5; // 미리보기 최대 행 수
 
 export default function UploadPage() {
+  const queryClient = useQueryClient();
   const [activeType, setActiveType] = useState<UploadType>("participation");
   const [dragOver, setDragOver] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
@@ -130,7 +132,11 @@ export default function UploadPage() {
       );
       setResult(data);
       setStatus(data.success ? "success" : "error");
-      if (!data.success && data.errors.length > 0) {
+      if (data.success) {
+        // 업로드 성공 시 관련 쿼리 캐시 무효화
+        queryClient.invalidateQueries({ queryKey: [activeType] });
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      } else if (data.errors.length > 0) {
         setErrorMsg(`${data.errors.length}개 행에 오류가 있습니다.`);
       }
     } catch (err: any) {

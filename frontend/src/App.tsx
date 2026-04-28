@@ -15,7 +15,9 @@ import { getToken } from "./api/auth";
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 5 * 60 * 1000,
+      staleTime: 30 * 60 * 1000,  // 30분간 신선 데이터로 취급
+      gcTime: 60 * 60 * 1000,    // 1시간 캐시 유지
+      refetchOnWindowFocus: false, // 탭 전환 시 재요청 방지
       retry: 1,
     },
   },
