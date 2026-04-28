@@ -56,11 +56,17 @@ async def get_participation_summary(
         baseline_series.append({"x": label, "rate": _rate(rb_t or 0, rb_p or 0)})
         filtered_series.append({"x": label, "rate": _rate(rf_t or 0, rf_p or 0)})
 
-    # 최신 월 스코어카드
-    current_rate = filtered_series[-1]["rate"] if filtered_series else None
+    # 기간 평균 스코어카드
+    base_rates = [s["rate"] for s in baseline_series if s["rate"] is not None]
+    filt_rates = [s["rate"] for s in filtered_series if s["rate"] is not None]
+    baseline_avg = round(sum(base_rates) / len(base_rates), 1) if base_rates else None
+    filtered_avg = round(sum(filt_rates) / len(filt_rates), 1) if filt_rates else None
 
     return {
-        "scorecard": {"current_month_rate": current_rate},
+        "scorecard": {
+            "baseline_avg_rate": baseline_avg,
+            "filtered_avg_rate": filtered_avg,
+        },
         "chart": {
             "series": [
                 {"label": "기준값 (전체)", "type": "line", "data": baseline_series},

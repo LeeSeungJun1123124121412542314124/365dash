@@ -121,8 +121,10 @@ export function useComplaintSummary(params: FilterParams) {
 }
 
 export function useComplaintKeywords(params: {
-  year?: number | null;
-  month?: number | null;
+  start_year?: number | null;
+  start_month?: number | null;
+  end_year?: number | null;
+  end_month?: number | null;
   group_id?: number | null;
   branch_id?: number | null;
 }) {

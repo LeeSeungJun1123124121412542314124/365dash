@@ -104,7 +104,7 @@ class NpsData(SQLModel, table=True):
 
 
 # ──────────────────────────────────────────
-# 칭찬 데이터 — §3.7 (행 단위 raw, DELETE+INSERT)
+# 칭찬 데이터 — 월 단위 집계 (UPSERT on branch_id+year+month)
 # ──────────────────────────────────────────
 
 class PraiseData(SQLModel, table=True):
@@ -114,33 +114,25 @@ class PraiseData(SQLModel, table=True):
     branch_id: int = Field(foreign_key="branches.id")
     year: int
     month: int
-    inflow_path: Optional[str] = Field(default=None, max_length=100)   # 유입경로
-    content: str                                                         # 칭찬내용
-    target_person: Optional[str] = Field(default=None, max_length=100)  # 칭찬대상자
+    count: int = Field(default=0)                                       # 칭찬개수
     batch_id: Optional[int] = Field(default=None, foreign_key="upload_batches.id")
     uploaded_at: datetime = Field(default_factory=datetime.utcnow)
     uploaded_by: Optional[int] = Field(default=None, foreign_key="users.id")
 
 
 # ──────────────────────────────────────────
-# 불만 데이터 — §3.8 (행 단위 raw, DELETE+INSERT)
+# 불만 데이터 — 키워드+개수 집계 (UPSERT on branch_id+year+month+keyword)
 # ──────────────────────────────────────────
-
-COMPLAINT_CATEGORIES = [
-    "parking", "guidance", "waiting", "rudeness",
-    "system", "privacy", "environment", "other",
-]
 
 class ComplaintData(SQLModel, table=True):
     __tablename__ = "complaint_data"
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    branch_id: int = Field(foreign_key="branches.id")
+    group_id: int = Field(foreign_key="branch_groups.id")              # 대분류 단위 집계
     year: int
     month: int
-    inflow_path: Optional[str] = Field(default=None, max_length=100)   # 유입경로
-    content: str                                                         # 불만내용
-    category: str = Field(max_length=20)                                # complaint_category enum 값
+    keyword: str = Field(max_length=100)                                # 불만키워드
+    count: int = Field(default=0)                                       # 개수
     batch_id: Optional[int] = Field(default=None, foreign_key="upload_batches.id")
     uploaded_at: datetime = Field(default_factory=datetime.utcnow)
     uploaded_by: Optional[int] = Field(default=None, foreign_key="users.id")

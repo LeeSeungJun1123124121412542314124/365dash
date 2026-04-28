@@ -1,6 +1,6 @@
 import { useState } from "react";
 import {
-  AreaChart, Area, BarChart, Bar,
+  BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend,
 } from "recharts";
@@ -98,40 +98,28 @@ export default function MainDashboardPage() {
         {/* 참여율 추이 */}
         <ChartCard title="참여율 추이 (%)" period={period} onPeriodChange={setPeriod}>
           <ResponsiveContainer width="100%" height={200}>
-            <AreaChart data={participationTrend} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-              <defs>
-                <linearGradient id="g-p" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#7c3aed" stopOpacity={0.15} />
-                  <stop offset="95%" stopColor="#7c3aed" stopOpacity={0} />
-                </linearGradient>
-              </defs>
+            <BarChart data={participationTrend} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
               <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} interval={0} />
               <YAxis tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} domain={[0, 100]} />
               <Tooltip content={<CustomTooltip />} />
-              <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
-              <Area type="monotone" dataKey="참여율" stroke="#7c3aed" strokeWidth={2} fill="url(#g-p)" dot={false} connectNulls />
-            </AreaChart>
+              <Legend iconType="square" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
+              <Bar dataKey="참여율" fill="#7c3aed" radius={[4, 4, 0, 0]} maxBarSize={24} />
+            </BarChart>
           </ResponsiveContainer>
         </ChartCard>
 
         {/* NPS 추이 */}
         <ChartCard title="NPS 매우만족율 추이 (%)" period={period} onPeriodChange={setPeriod}>
           <ResponsiveContainer width="100%" height={200}>
-            <AreaChart data={npsTrend} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-              <defs>
-                <linearGradient id="g-n" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#2563eb" stopOpacity={0.15} />
-                  <stop offset="95%" stopColor="#2563eb" stopOpacity={0} />
-                </linearGradient>
-              </defs>
+            <BarChart data={npsTrend} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
               <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} interval={0} />
               <YAxis tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
               <Tooltip content={<CustomTooltip />} />
-              <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
-              <Area type="monotone" dataKey="매우만족" stroke="#2563eb" strokeWidth={2} fill="url(#g-n)" dot={false} connectNulls />
-            </AreaChart>
+              <Legend iconType="square" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
+              <Bar dataKey="매우만족" fill="#2563eb" radius={[4, 4, 0, 0]} maxBarSize={24} />
+            </BarChart>
           </ResponsiveContainer>
         </ChartCard>
 

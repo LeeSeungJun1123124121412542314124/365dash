@@ -1,4 +1,4 @@
-"""불만 집계 API — §5.5, §5.6 스펙 기반."""
+"""불만 집계 API — 대분류(group) 단위 집계."""
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -6,7 +6,7 @@ from sqlmodel import select, func
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.deps import get_current_user, get_data_filter, get_session
-from app.db.models import Branch, BranchGroup, ComplaintData
+from app.db.models import BranchGroup, ComplaintData
 from app.services.month_window import months_in_range
 
 router = APIRouter(prefix="/complaint", tags=["불만"])
@@ -15,49 +15,36 @@ CATEGORY_KEY = {
     "hospital":     "surgery_complaint",
     "lams_surgery": "lams_surgery_complaint",
     "lams":         "lams_complaint",
+    "etc":          "etc_complaint",
 }
 
-CATEGORY_KR = {
-    "parking": "주차", "guidance": "안내 응대부족", "waiting": "대기관련",
-    "rudeness": "불친절", "system": "시스템불만", "privacy": "개인정보",
-    "environment": "환경불만", "other": "기타",
-}
-CATEGORY_FIELDS = list(CATEGORY_KR.keys())
 
-
-def _apply_filter(q, eff_group, eff_branch):
-    if eff_group:
-        return q.where(Branch.group_id == eff_group)
-    elif eff_branch:
-        return q.where(ComplaintData.branch_id == eff_branch)
-    return q
-
-
-async def _count_by_group(
+async def _sum_by_group(
     session: AsyncSession,
     year: int,
     month: int,
     eff_group: Optional[int],
-    eff_branch: Optional[int],
 ) -> dict:
+    """월별 불만 개수를 대분류별로 집계."""
     q = (
         select(
             BranchGroup.category.label("cat"),
-            func.count(ComplaintData.id).label("cnt"),
+            func.coalesce(func.sum(ComplaintData.count), 0).label("cnt"),
         )
-        .join(Branch, Branch.id == ComplaintData.branch_id)
-        .join(BranchGroup, BranchGroup.id == Branch.group_id)
+        .join(BranchGroup, BranchGroup.id == ComplaintData.group_id)
         .where(ComplaintData.year == year, ComplaintData.month == month)
     )
-    q = _apply_filter(q, eff_group, eff_branch)
+    if eff_group:
+        q = q.where(ComplaintData.group_id == eff_group)
     q = q.group_by(BranchGroup.category)
 
     rows = (await session.exec(q)).all()
-    result = {"total": 0, "surgery_complaint": 0, "lams_complaint": 0, "lams_surgery_complaint": 0}
+    result = {"total": 0, "surgery_complaint": 0, "lams_complaint": 0,
+              "lams_surgery_complaint": 0, "etc_complaint": 0}
     for r in rows:
-        key = CATEGORY_KEY.get(r.cat, "lams_complaint")
-        result[key] = r.cnt
-        result["total"] += r.cnt
+        key = CATEGORY_KEY.get(r.cat, "etc_complaint")
+        result[key] = int(r.cnt)
+        result["total"] += int(r.cnt)
     return result
 
 
@@ -73,8 +60,7 @@ async def get_complaint_summary(
     session: Annotated[AsyncSession, Depends(get_session)] = None,
 ):
     perm = get_data_filter(user)
-    eff_group  = perm["group_id"]  if perm["group_id"]  is not None else group_id
-    eff_branch = perm["branch_id"] if perm["branch_id"] is not None else branch_id
+    eff_group = perm["group_id"] if perm["group_id"] is not None else group_id
 
     period = months_in_range(start_year, start_month, end_year, end_month)
     baseline_series = []
@@ -82,18 +68,16 @@ async def get_complaint_summary(
 
     for year, month in period:
         label = f"{year}-{month:02d}"
-        base = await _count_by_group(session, year, month, None, None)
-        filt = await _count_by_group(session, year, month, eff_group, eff_branch)
+        base = await _sum_by_group(session, year, month, None)
+        filt = await _sum_by_group(session, year, month, eff_group)
         baseline_series.append({"x": label, **base})
         filtered_series.append({"x": label, **filt})
 
-    latest_base = baseline_series[-1] if baseline_series else {}
-    latest_filt = filtered_series[-1] if filtered_series else {}
-
+    # 기간 합계 스코어카드
     return {
         "scorecard": {
-            "baseline_total": latest_base.get("total", 0),
-            "filtered_total": latest_filt.get("total", 0),
+            "baseline_total": sum(s["total"] for s in baseline_series),
+            "filtered_total": sum(s["total"] for s in filtered_series),
         },
         "chart": {
             "series": [
@@ -106,76 +90,56 @@ async def get_complaint_summary(
 
 @router.get("/keywords")
 async def get_complaint_keywords(
-    year: Optional[int] = Query(default=None),
-    month: Optional[int] = Query(default=None),
+    start_year: int = Query(default=2000, ge=2000, le=2100),
+    start_month: int = Query(default=1, ge=1, le=12),
+    end_year: int = Query(default=2100, ge=2000, le=2100),
+    end_month: int = Query(default=12, ge=1, le=12),
     group_id: Optional[int] = Query(default=None),
     branch_id: Optional[int] = Query(default=None),
     user: Annotated[dict, Depends(get_current_user)] = None,
     session: Annotated[AsyncSession, Depends(get_session)] = None,
 ):
-    """§5.6 — 키워드(카테고리별) 집계 테이블."""
+    """키워드별 불만 집계 테이블 (기간 범위 필터)."""
     perm = get_data_filter(user)
-    eff_group  = perm["group_id"]  if perm["group_id"]  is not None else group_id
-    eff_branch = perm["branch_id"] if perm["branch_id"] is not None else branch_id
+    eff_group = perm["group_id"] if perm["group_id"] is not None else group_id
 
-    # 각 (year, month, branch) 조합별 카테고리 카운트
+    start_ym = start_year * 100 + start_month
+    end_ym = end_year * 100 + end_month
+
     q = (
         select(
             ComplaintData.year,
             ComplaintData.month,
-            Branch.name.label("branch_name"),
             BranchGroup.name.label("group_name"),
-            ComplaintData.category,
-            func.count(ComplaintData.id).label("cnt"),
+            ComplaintData.keyword,
+            func.coalesce(func.sum(ComplaintData.count), 0).label("cnt"),
         )
-        .join(Branch, Branch.id == ComplaintData.branch_id)
-        .join(BranchGroup, BranchGroup.id == Branch.group_id)
+        .join(BranchGroup, BranchGroup.id == ComplaintData.group_id)
+        .where(
+            (ComplaintData.year * 100 + ComplaintData.month) >= start_ym,
+            (ComplaintData.year * 100 + ComplaintData.month) <= end_ym,
+        )
     )
 
-    if year:
-        q = q.where(ComplaintData.year == year)
-    if month:
-        q = q.where(ComplaintData.month == month)
     if eff_group:
-        q = q.where(Branch.group_id == eff_group)
-    elif eff_branch:
-        q = q.where(ComplaintData.branch_id == eff_branch)
+        q = q.where(ComplaintData.group_id == eff_group)
 
     q = q.group_by(
         ComplaintData.year, ComplaintData.month,
-        Branch.name, BranchGroup.name,
-        ComplaintData.category,
-    ).order_by(ComplaintData.year.desc(), ComplaintData.month.desc(), Branch.name)
+        BranchGroup.name, ComplaintData.keyword,
+    ).order_by(ComplaintData.year.desc(), ComplaintData.month.desc(), BranchGroup.name)
 
     rows = (await session.exec(q)).all()
 
-    # (year, month, branch_name) 별로 집계
-    from collections import defaultdict
-    agg: dict[tuple, dict] = defaultdict(lambda: {
-        "year": 0, "month": 0, "branch_name": "", "group_name": "",
-        **{cat: 0 for cat in CATEGORY_FIELDS},
-        "total": 0,
-    })
-
-    for r in rows:
-        key = (r.year, r.month, r.branch_name)
-        d = agg[key]
-        d.update({"year": r.year, "month": r.month,
-                  "branch_name": r.branch_name, "group_name": r.group_name})
-        if r.category in CATEGORY_FIELDS:
-            d[r.category] += r.cnt
-            d["total"] += r.cnt
-
-    result_rows = []
-    for d in agg.values():
-        result_rows.append({
-            "year": d["year"], "month": d["month"],
-            "branch_name": d["branch_name"], "group_name": d["group_name"],
-            **{CATEGORY_KR[f]: d[f] for f in CATEGORY_FIELDS},
-            "total": d["total"],
-        })
-
-    # 정렬 (year desc, month desc, branch_name asc)
-    result_rows.sort(key=lambda x: (-x["year"], -x["month"], x["branch_name"]))
-
-    return {"rows": result_rows}
+    return {
+        "rows": [
+            {
+                "year": r.year,
+                "month": r.month,
+                "group_name": r.group_name,
+                "keyword": r.keyword,
+                "count": int(r.cnt),
+            }
+            for r in rows
+        ]
+    }

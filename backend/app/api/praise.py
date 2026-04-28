@@ -38,7 +38,7 @@ async def _count_by_group(
     q = (
         select(
             BranchGroup.category.label("cat"),
-            func.count(PraiseData.id).label("cnt"),
+            func.coalesce(func.sum(PraiseData.count), 0).label("cnt"),
         )
         .join(Branch, Branch.id == PraiseData.branch_id)
         .join(BranchGroup, BranchGroup.id == Branch.group_id)
@@ -51,8 +51,8 @@ async def _count_by_group(
     result = {"total": 0, "surgery": 0, "lams": 0, "lams_surgery": 0}
     for r in rows:
         key = CATEGORY_KEY.get(r.cat, "lams")
-        result[key] = r.cnt
-        result["total"] += r.cnt
+        result[key] = int(r.cnt)
+        result["total"] += int(r.cnt)
     return result
 
 
@@ -88,14 +88,11 @@ async def get_praise_summary(
                                  "lams": filt["lams"],
                                  "lams_surgery": filt["lams_surgery"]})
 
-    # 최신 월 스코어카드
-    latest_base = baseline_series[-1] if baseline_series else {}
-    latest_filt = filtered_series[-1] if filtered_series else {}
-
+    # 기간 합계 스코어카드
     return {
         "scorecard": {
-            "baseline_total": latest_base.get("total", 0),
-            "filtered_total": latest_filt.get("total", 0),
+            "baseline_total": sum(s["total"] for s in baseline_series),
+            "filtered_total": sum(s["total"] for s in filtered_series),
         },
         "chart": {
             "series": [

@@ -108,27 +108,6 @@ def _make_nps_rows(branch_id: int, year: int, month: int) -> list[dict]:
     }]
 
 
-PRAISE_CONTENTS = [
-    "직원분이 정말 친절하게 설명해주셔서 감사했습니다.",
-    "대기 중에도 불편함 없이 편안하게 기다릴 수 있었습니다.",
-    "시술 결과가 만족스럽고 의료진분들이 전문적이었습니다.",
-    "안내가 명확하고 접수부터 퇴원까지 매끄러웠습니다.",
-    "친절하고 세심한 케어 덕분에 안심하고 치료받았습니다.",
-]
-
-COMPLAINT_CONTENTS = [
-    "대기시간이 너무 길었습니다.",
-    "주차공간이 부족해 불편했습니다.",
-    "안내 직원의 응대가 불친절했습니다.",
-    "예약 시스템 오류로 불편을 겪었습니다.",
-    "환경이 다소 노후되어 개선이 필요합니다.",
-]
-
-COMPLAINT_CATEGORIES = [
-    "waiting", "parking", "rudeness", "system", "environment",
-]
-
-INFLOW_PATHS = ["인터넷", "지인소개", "SNS", "현장방문", "광고"]
 
 
 async def seed():
@@ -224,40 +203,52 @@ async def seed():
                         nps_count += 1
         print(f"[INSERT] NpsData {nps_count}건")
 
-        # 6. PraiseData (지점당 월 5~15건)
+        # 6. PraiseData (월 단위 집계 — 지점당 1행, count 3~10)
         praise_count = 0
         for year, month in SAMPLE_MONTHS:
             for code, bid in branch_map.items():
-                n = random.randint(3, 10)
-                for i in range(n):
+                existing = (await session.exec(
+                    select(PraiseData).where(
+                        PraiseData.branch_id == bid,
+                        PraiseData.year == year,
+                        PraiseData.month == month,
+                    )
+                )).first()
+                if not existing:
                     session.add(PraiseData(
                         branch_id=bid,
                         year=year,
                         month=month,
-                        inflow_path=random.choice(INFLOW_PATHS),
-                        content=random.choice(PRAISE_CONTENTS),
-                        target_person=f"직원{random.randint(1, 10):02d}",
+                        count=random.randint(3, 10),
                         uploaded_at=datetime.utcnow(),
                     ))
                     praise_count += 1
         print(f"[INSERT] PraiseData {praise_count}건")
 
-        # 7. ComplaintData (지점당 월 1~5건)
+        # 7. ComplaintData (대분류 × 키워드별 1행)
+        SAMPLE_KEYWORDS = ["주차", "대기관련", "불친절", "안내부족", "환경", "기타"]
         complaint_count = 0
         for year, month in SAMPLE_MONTHS:
-            for code, bid in branch_map.items():
-                n = random.randint(1, 4)
-                for i in range(n):
-                    session.add(ComplaintData(
-                        branch_id=bid,
-                        year=year,
-                        month=month,
-                        inflow_path=random.choice(INFLOW_PATHS),
-                        content=random.choice(COMPLAINT_CONTENTS),
-                        category=random.choice(COMPLAINT_CATEGORIES),
-                        uploaded_at=datetime.utcnow(),
-                    ))
-                    complaint_count += 1
+            for gcode, gid in group_map.items():
+                for kw in random.sample(SAMPLE_KEYWORDS, k=random.randint(2, 4)):
+                    existing = (await session.exec(
+                        select(ComplaintData).where(
+                            ComplaintData.group_id == gid,
+                            ComplaintData.year == year,
+                            ComplaintData.month == month,
+                            ComplaintData.keyword == kw,
+                        )
+                    )).first()
+                    if not existing:
+                        session.add(ComplaintData(
+                            group_id=gid,
+                            year=year,
+                            month=month,
+                            keyword=kw,
+                            count=random.randint(1, 5),
+                            uploaded_at=datetime.utcnow(),
+                        ))
+                        complaint_count += 1
         print(f"[INSERT] ComplaintData {complaint_count}건")
 
         await session.commit()

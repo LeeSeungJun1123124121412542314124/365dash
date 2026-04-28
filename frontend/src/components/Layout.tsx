@@ -55,7 +55,10 @@ export default function Layout() {
       {/* ── 사이드바 ── */}
       <aside className="w-[220px] min-h-screen bg-[#1e2139] text-white flex flex-col flex-shrink-0">
         {/* 로고 */}
-        <div className="px-6 py-6 flex items-center gap-3">
+        <div
+          className="px-6 py-6 flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity"
+          onClick={() => navigate("/")}
+        >
           <div className="w-8 h-8 rounded-xl bg-violet-500 flex items-center justify-center text-white font-bold text-sm">
             HA
           </div>

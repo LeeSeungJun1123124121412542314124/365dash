@@ -3,13 +3,12 @@ from datetime import datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
-from sqlalchemy import delete
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.deps import ManagerAbove, get_current_user, get_session
 from app.db.models import (
-    Branch, ComplaintData, NpsData, ParticipationData, PraiseData, UploadBatch,
+    Branch, BranchGroup, ComplaintData, NpsData, ParticipationData, PraiseData, UploadBatch,
 )
 from app.schemas.common import UploadResponse
 from app.services import excel_parser
@@ -32,6 +31,12 @@ async def _get_branch_map(session: AsyncSession, names: list[str]) -> dict[str, 
     """지점명 리스트 → {name: id} 딕셔너리 일괄 조회."""
     result = await session.exec(select(Branch).where(Branch.name.in_(names)))
     return {b.name: b.id for b in result.all()}
+
+
+async def _get_group_map(session: AsyncSession, names: list[str]) -> dict[str, int]:
+    """대분류명 리스트 → {name: id} 딕셔너리 일괄 조회."""
+    result = await session.exec(select(BranchGroup).where(BranchGroup.name.in_(names)))
+    return {g.name: g.id for g in result.all()}
 
 
 async def _upsert_participation(
@@ -126,12 +131,12 @@ async def _upsert_nps(
     return count
 
 
-async def _replace_praise(
+async def _upsert_praise(
     session: AsyncSession,
     records: list[dict],
     user_id: int,
 ) -> int:
-    """칭찬 — DELETE + INSERT (동일 branch/year/month 트랜잭션)."""
+    """칭찬 — UPSERT on (branch_id, year, month)."""
     names = list({r["branch_name"] for r in records})
     branch_map = await _get_branch_map(session, names)
 
@@ -139,80 +144,75 @@ async def _replace_praise(
     if missing:
         raise ValueError(f"존재하지 않는 지점명: {', '.join(missing)}")
 
-    # 대상 (branch_id, year, month) 조합 추출
-    combos = {
-        (branch_map[r["branch_name"]], r["year"], r["month"])
-        for r in records
-    }
-
-    # 기존 행 삭제
-    for bid, year, month in combos:
-        await session.exec(
-            delete(PraiseData).where(
+    count = 0
+    for rec in records:
+        bid = branch_map[rec["branch_name"]]
+        existing = (await session.exec(
+            select(PraiseData).where(
                 PraiseData.branch_id == bid,
-                PraiseData.year == year,
-                PraiseData.month == month,
+                PraiseData.year == rec["year"],
+                PraiseData.month == rec["month"],
             )
-        )
+        )).first()
+        if existing:
+            existing.count = rec["count"]
+            existing.uploaded_at = datetime.utcnow()
+            existing.uploaded_by = user_id
+            session.add(existing)
+        else:
+            session.add(PraiseData(
+                branch_id=bid,
+                year=rec["year"],
+                month=rec["month"],
+                count=rec["count"],
+                uploaded_at=datetime.utcnow(),
+                uploaded_by=user_id,
+            ))
+            count += 1
+    return count
 
-    # 신규 삽입
-    for rec in records:
-        bid = branch_map[rec["branch_name"]]
-        session.add(PraiseData(
-            branch_id=bid,
-            year=rec["year"],
-            month=rec["month"],
-            inflow_path=rec.get("inflow_path"),
-            content=rec["content"],
-            target_person=rec.get("target_person"),
-            uploaded_at=datetime.utcnow(),
-            uploaded_by=user_id,
-        ))
 
-    return len(records)
-
-
-async def _replace_complaint(
+async def _upsert_complaint(
     session: AsyncSession,
     records: list[dict],
     user_id: int,
 ) -> int:
-    """불만 — DELETE + INSERT (동일 branch/year/month 트랜잭션)."""
-    names = list({r["branch_name"] for r in records})
-    branch_map = await _get_branch_map(session, names)
+    """불만 — UPSERT on (group_id, year, month, keyword)."""
+    names = list({r["group_name"] for r in records})
+    group_map = await _get_group_map(session, names)
 
-    missing = [n for n in names if n not in branch_map]
+    missing = [n for n in names if n not in group_map]
     if missing:
-        raise ValueError(f"존재하지 않는 지점명: {', '.join(missing)}")
+        raise ValueError(f"존재하지 않는 대분류명: {', '.join(missing)}")
 
-    combos = {
-        (branch_map[r["branch_name"]], r["year"], r["month"])
-        for r in records
-    }
-
-    for bid, year, month in combos:
-        await session.exec(
-            delete(ComplaintData).where(
-                ComplaintData.branch_id == bid,
-                ComplaintData.year == year,
-                ComplaintData.month == month,
-            )
-        )
-
+    count = 0
     for rec in records:
-        bid = branch_map[rec["branch_name"]]
-        session.add(ComplaintData(
-            branch_id=bid,
-            year=rec["year"],
-            month=rec["month"],
-            inflow_path=rec.get("inflow_path"),
-            content=rec["content"],
-            category=rec["category"],
-            uploaded_at=datetime.utcnow(),
-            uploaded_by=user_id,
-        ))
-
-    return len(records)
+        gid = group_map[rec["group_name"]]
+        existing = (await session.exec(
+            select(ComplaintData).where(
+                ComplaintData.group_id == gid,
+                ComplaintData.year == rec["year"],
+                ComplaintData.month == rec["month"],
+                ComplaintData.keyword == rec["keyword"],
+            )
+        )).first()
+        if existing:
+            existing.count = rec["count"]
+            existing.uploaded_at = datetime.utcnow()
+            existing.uploaded_by = user_id
+            session.add(existing)
+        else:
+            session.add(ComplaintData(
+                group_id=gid,
+                year=rec["year"],
+                month=rec["month"],
+                keyword=rec["keyword"],
+                count=rec["count"],
+                uploaded_at=datetime.utcnow(),
+                uploaded_by=user_id,
+            ))
+            count += 1
+    return count
 
 
 @router.post("/{upload_type}", response_model=UploadResponse)
@@ -257,19 +257,30 @@ async def upload_excel(
         elif upload_type == "nps":
             count = await _upsert_nps(session, records, user_id)
         elif upload_type == "praise":
-            count = await _replace_praise(session, records, user_id)
+            count = await _upsert_praise(session, records, user_id)
         else:  # 불만
-            count = await _replace_complaint(session, records, user_id)
+            count = await _upsert_complaint(session, records, user_id)
 
         # 업로드 배치 이력 (첫 레코드 year/month 기준 대표 로그)
         if records:
-            branch_name = records[0]["branch_name"]
-            branch_map = await _get_branch_map(session, [branch_name])
-            rep_branch_id = branch_map.get(branch_name, 1)
+            rec0 = records[0]
+            if upload_type == "complaint":
+                # 불만은 group_name 기반 — 해당 그룹의 첫 번째 지점 id로 대표
+                gname = rec0["group_name"]
+                gmap = await _get_group_map(session, [gname])
+                gid = gmap.get(gname)
+                first_branch = (await session.exec(
+                    select(Branch).where(Branch.group_id == gid)
+                )).first()
+                rep_branch_id = first_branch.id if first_branch else 1
+            else:
+                bname = rec0["branch_name"]
+                bmap = await _get_branch_map(session, [bname])
+                rep_branch_id = bmap.get(bname, 1)
             session.add(UploadBatch(
                 upload_type=upload_type,
-                year=records[0]["year"],
-                month=records[0]["month"],
+                year=rec0["year"],
+                month=rec0["month"],
                 branch_id=rep_branch_id,
                 uploaded_by=user_id,
                 row_count=len(records),

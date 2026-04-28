@@ -168,10 +168,10 @@ def parse_nps(file_bytes: bytes) -> tuple[list[dict], list[dict]]:
 
 
 # ──────────────────────────────────────────
-# §4.3 칭찬 업로드 — 행 단위 raw
+# §4.3 칭찬 업로드 — 월 단위 집계 (연도/월/지점명/칭찬개수)
 # ──────────────────────────────────────────
 
-PRAISE_REQUIRED = ["연도", "월", "지점명", "칭찬내용"]
+PRAISE_REQUIRED = ["연도", "월", "지점명", "칭찬개수"]
 
 
 def parse_praise(file_bytes: bytes) -> tuple[list[dict], list[dict]]:
@@ -193,7 +193,9 @@ def parse_praise(file_bytes: bytes) -> tuple[list[dict], list[dict]]:
         year = _safe_int(row.get("연도"))
         month = _safe_int(row.get("월"))
         branch_name = str(row.get("지점명", "")).strip()
-        content = str(row.get("칭찬내용", "")).strip()
+        count = _safe_int(row.get("칭찬개수"))
+        if count is None:
+            count = 0  # 공백 셀은 0 처리
 
         if year is None or not (2000 <= year <= 2099):
             row_errors.append(_row_error(rn, "연도", row.get("연도"), "연도는 4자리 숫자여야 합니다"))
@@ -201,23 +203,15 @@ def parse_praise(file_bytes: bytes) -> tuple[list[dict], list[dict]]:
             row_errors.append(_row_error(rn, "월", row.get("월"), "월은 1~12 사이 숫자여야 합니다"))
         if not branch_name:
             row_errors.append(_row_error(rn, "지점명", None, "지점명은 필수입니다"))
-        if not content:
-            row_errors.append(_row_error(rn, "칭찬내용", None, "칭찬내용은 필수입니다"))
-
-        # 선택 필드
-        inflow_raw = row.get("유입경로")
-        inflow = str(inflow_raw).strip()[:100] if not pd.isna(inflow_raw) and str(inflow_raw).strip() else None
-        target_raw = row.get("칭찬대상자")
-        target = str(target_raw).strip()[:100] if not pd.isna(target_raw) and str(target_raw).strip() else None
+        if count < 0:
+            row_errors.append(_row_error(rn, "칭찬개수", row.get("칭찬개수"), "0 이상의 정수여야 합니다"))
 
         if not any(e["row"] == rn for e in row_errors):
             records.append({
                 "year": year,
                 "month": month,
                 "branch_name": branch_name,
-                "inflow_path": inflow,
-                "content": content,
-                "target_person": target,
+                "count": count,
             })
 
     if row_errors:
@@ -226,23 +220,12 @@ def parse_praise(file_bytes: bytes) -> tuple[list[dict], list[dict]]:
 
 
 # ──────────────────────────────────────────
-# §4.4 불만 업로드 — 행 단위 raw
+# §4.4 불만 업로드 — 키워드+개수 집계 (연도/월/지점명/불만키워드/개수)
 # ──────────────────────────────────────────
 
-COMPLAINT_REQUIRED = ["연도", "월", "지점명", "불만내용", "불만카테고리선택"]
+COMPLAINT_REQUIRED = ["연도", "월", "대분류", "불만키워드", "개수"]
 
-# 엑셀 입력값 → DB category 매핑
-CATEGORY_MAP = {
-    "주차":         "parking",
-    "안내 응대부족":  "guidance",
-    "안내·응대부족":  "guidance",
-    "대기관련":      "waiting",
-    "불친절":        "rudeness",
-    "시스템불만":     "system",
-    "개인정보":      "privacy",
-    "환경불만":      "environment",
-    "기타":          "other",
-}
+VALID_GROUPS = ["병원급", "람스+시술", "람스", "기타"]
 
 
 def parse_complaint(file_bytes: bytes) -> tuple[list[dict], list[dict]]:
@@ -263,37 +246,32 @@ def parse_complaint(file_bytes: bytes) -> tuple[list[dict], list[dict]]:
 
         year = _safe_int(row.get("연도"))
         month = _safe_int(row.get("월"))
-        branch_name = str(row.get("지점명", "")).strip()
-        content = str(row.get("불만내용", "")).strip()
-        category_raw = str(row.get("불만카테고리선택", "")).strip()
-        category = CATEGORY_MAP.get(category_raw)
+        group_name = str(row.get("대분류", "")).strip()
+        keyword_raw = row.get("불만키워드")
+        keyword = str(keyword_raw).strip()[:100] if not pd.isna(keyword_raw) and str(keyword_raw).strip() else ""
+        count = _safe_int(row.get("개수"))
+        if count is None:
+            count = 0  # 공백 셀은 0 처리
 
         if year is None or not (2000 <= year <= 2099):
             row_errors.append(_row_error(rn, "연도", row.get("연도"), "연도는 4자리 숫자여야 합니다"))
         if month is None or not (1 <= month <= 12):
             row_errors.append(_row_error(rn, "월", row.get("월"), "월은 1~12 사이 숫자여야 합니다"))
-        if not branch_name:
-            row_errors.append(_row_error(rn, "지점명", None, "지점명은 필수입니다"))
-        if not content:
-            row_errors.append(_row_error(rn, "불만내용", None, "불만내용은 필수입니다"))
-        if not category:
-            row_errors.append(_row_error(
-                rn, "불만카테고리선택", category_raw,
-                f"유효하지 않은 카테고리: {category_raw}"
-            ))
-
-        # 선택 필드
-        inflow_raw = row.get("유입경로")
-        inflow = str(inflow_raw).strip()[:100] if not pd.isna(inflow_raw) and str(inflow_raw).strip() else None
+        if group_name not in VALID_GROUPS:
+            row_errors.append(_row_error(rn, "대분류", group_name,
+                                         f"유효하지 않은 대분류입니다. ({', '.join(VALID_GROUPS)} 중 하나)"))
+        if not keyword:
+            row_errors.append(_row_error(rn, "불만키워드", None, "불만키워드는 필수입니다"))
+        if count < 0:
+            row_errors.append(_row_error(rn, "개수", row.get("개수"), "0 이상의 정수여야 합니다"))
 
         if not any(e["row"] == rn for e in row_errors):
             records.append({
                 "year": year,
                 "month": month,
-                "branch_name": branch_name,
-                "inflow_path": inflow,
-                "content": content,
-                "category": category,
+                "group_name": group_name,
+                "keyword": keyword,
+                "count": count,
             })
 
     if row_errors:
