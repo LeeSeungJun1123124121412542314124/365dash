@@ -44,7 +44,7 @@ async def _upsert_participation(
     records: list[dict],
     user_id: int,
 ) -> int:
-    """참여율 — UPSERT on (branch_id, year, month)."""
+    """참여율 — UPSERT on (branch_id, year, month). 배치 SELECT로 N+1 방지."""
     names = list({r["branch_name"] for r in records})
     branch_map = await _get_branch_map(session, names)
 
@@ -52,31 +52,30 @@ async def _upsert_participation(
     if missing:
         raise ValueError(f"존재하지 않는 지점명: {', '.join(missing)}")
 
+    all_bids = list(branch_map.values())
+    existing_rows = (await session.exec(
+        select(ParticipationData).where(ParticipationData.branch_id.in_(all_bids))
+    )).all()
+    existing_map = {(r.branch_id, r.year, r.month): r for r in existing_rows}
+
     count = 0
+    now = datetime.utcnow()
     for rec in records:
         bid = branch_map[rec["branch_name"]]
-        existing = (await session.exec(
-            select(ParticipationData).where(
-                ParticipationData.branch_id == bid,
-                ParticipationData.year == rec["year"],
-                ParticipationData.month == rec["month"],
-            )
-        )).first()
-        if existing:
-            existing.target_count = rec["target_count"]
-            existing.participant_count = rec["participant_count"]
-            existing.uploaded_at = datetime.utcnow()
-            existing.uploaded_by = user_id
-            session.add(existing)
+        key = (bid, rec["year"], rec["month"])
+        if key in existing_map:
+            e = existing_map[key]
+            e.target_count = rec["target_count"]
+            e.participant_count = rec["participant_count"]
+            e.uploaded_at = now
+            e.uploaded_by = user_id
+            session.add(e)
         else:
             session.add(ParticipationData(
-                branch_id=bid,
-                year=rec["year"],
-                month=rec["month"],
+                branch_id=bid, year=rec["year"], month=rec["month"],
                 target_count=rec["target_count"],
                 participant_count=rec["participant_count"],
-                uploaded_at=datetime.utcnow(),
-                uploaded_by=user_id,
+                uploaded_at=now, uploaded_by=user_id,
             ))
             count += 1
     return count
@@ -87,7 +86,7 @@ async def _upsert_nps(
     records: list[dict],
     user_id: int,
 ) -> int:
-    """NPS — UPSERT on (branch_id, year, month)."""
+    """NPS — UPSERT on (branch_id, year, month). 배치 SELECT로 N+1 방지."""
     names = list({r["branch_name"] for r in records})
     branch_map = await _get_branch_map(session, names)
 
@@ -95,37 +94,34 @@ async def _upsert_nps(
     if missing:
         raise ValueError(f"존재하지 않는 지점명: {', '.join(missing)}")
 
+    all_bids = list(branch_map.values())
+    existing_rows = (await session.exec(
+        select(NpsData).where(NpsData.branch_id.in_(all_bids))
+    )).all()
+    existing_map = {(r.branch_id, r.year, r.month): r for r in existing_rows}
+
     count = 0
+    now = datetime.utcnow()
     for rec in records:
         bid = branch_map[rec["branch_name"]]
-        existing = (await session.exec(
-            select(NpsData).where(
-                NpsData.branch_id == bid,
-                NpsData.year == rec["year"],
-                NpsData.month == rec["month"],
-            )
-        )).first()
-        if existing:
-            existing.very_satisfied = rec["very_satisfied"]
-            existing.satisfied = rec["satisfied"]
-            existing.normal = rec["normal"]
-            existing.dissatisfied = rec["dissatisfied"]
-            existing.very_dissatisfied = rec["very_dissatisfied"]
-            existing.uploaded_at = datetime.utcnow()
-            existing.uploaded_by = user_id
-            session.add(existing)
+        key = (bid, rec["year"], rec["month"])
+        if key in existing_map:
+            e = existing_map[key]
+            e.very_satisfied = rec["very_satisfied"]
+            e.satisfied = rec["satisfied"]
+            e.normal = rec["normal"]
+            e.dissatisfied = rec["dissatisfied"]
+            e.very_dissatisfied = rec["very_dissatisfied"]
+            e.uploaded_at = now
+            e.uploaded_by = user_id
+            session.add(e)
         else:
             session.add(NpsData(
-                branch_id=bid,
-                year=rec["year"],
-                month=rec["month"],
-                very_satisfied=rec["very_satisfied"],
-                satisfied=rec["satisfied"],
-                normal=rec["normal"],
-                dissatisfied=rec["dissatisfied"],
+                branch_id=bid, year=rec["year"], month=rec["month"],
+                very_satisfied=rec["very_satisfied"], satisfied=rec["satisfied"],
+                normal=rec["normal"], dissatisfied=rec["dissatisfied"],
                 very_dissatisfied=rec["very_dissatisfied"],
-                uploaded_at=datetime.utcnow(),
-                uploaded_by=user_id,
+                uploaded_at=now, uploaded_by=user_id,
             ))
             count += 1
     return count
@@ -136,7 +132,7 @@ async def _upsert_praise(
     records: list[dict],
     user_id: int,
 ) -> int:
-    """칭찬 — UPSERT on (branch_id, year, month)."""
+    """칭찬 — UPSERT on (branch_id, year, month). 배치 SELECT로 N+1 방지."""
     names = list({r["branch_name"] for r in records})
     branch_map = await _get_branch_map(session, names)
 
@@ -144,29 +140,27 @@ async def _upsert_praise(
     if missing:
         raise ValueError(f"존재하지 않는 지점명: {', '.join(missing)}")
 
+    all_bids = list(branch_map.values())
+    existing_rows = (await session.exec(
+        select(PraiseData).where(PraiseData.branch_id.in_(all_bids))
+    )).all()
+    existing_map = {(r.branch_id, r.year, r.month): r for r in existing_rows}
+
     count = 0
+    now = datetime.utcnow()
     for rec in records:
         bid = branch_map[rec["branch_name"]]
-        existing = (await session.exec(
-            select(PraiseData).where(
-                PraiseData.branch_id == bid,
-                PraiseData.year == rec["year"],
-                PraiseData.month == rec["month"],
-            )
-        )).first()
-        if existing:
-            existing.count = rec["count"]
-            existing.uploaded_at = datetime.utcnow()
-            existing.uploaded_by = user_id
-            session.add(existing)
+        key = (bid, rec["year"], rec["month"])
+        if key in existing_map:
+            e = existing_map[key]
+            e.count = rec["count"]
+            e.uploaded_at = now
+            e.uploaded_by = user_id
+            session.add(e)
         else:
             session.add(PraiseData(
-                branch_id=bid,
-                year=rec["year"],
-                month=rec["month"],
-                count=rec["count"],
-                uploaded_at=datetime.utcnow(),
-                uploaded_by=user_id,
+                branch_id=bid, year=rec["year"], month=rec["month"],
+                count=rec["count"], uploaded_at=now, uploaded_by=user_id,
             ))
             count += 1
     return count
@@ -177,7 +171,7 @@ async def _upsert_complaint(
     records: list[dict],
     user_id: int,
 ) -> int:
-    """불만 — UPSERT on (group_id, year, month, keyword)."""
+    """불만 — UPSERT on (group_id, year, month, keyword). 배치 SELECT로 N+1 방지."""
     names = list({r["group_name"] for r in records})
     group_map = await _get_group_map(session, names)
 
@@ -185,31 +179,28 @@ async def _upsert_complaint(
     if missing:
         raise ValueError(f"존재하지 않는 대분류명: {', '.join(missing)}")
 
+    all_gids = list(group_map.values())
+    existing_rows = (await session.exec(
+        select(ComplaintData).where(ComplaintData.group_id.in_(all_gids))
+    )).all()
+    existing_map = {(r.group_id, r.year, r.month, r.keyword): r for r in existing_rows}
+
     count = 0
+    now = datetime.utcnow()
     for rec in records:
         gid = group_map[rec["group_name"]]
-        existing = (await session.exec(
-            select(ComplaintData).where(
-                ComplaintData.group_id == gid,
-                ComplaintData.year == rec["year"],
-                ComplaintData.month == rec["month"],
-                ComplaintData.keyword == rec["keyword"],
-            )
-        )).first()
-        if existing:
-            existing.count = rec["count"]
-            existing.uploaded_at = datetime.utcnow()
-            existing.uploaded_by = user_id
-            session.add(existing)
+        key = (gid, rec["year"], rec["month"], rec["keyword"])
+        if key in existing_map:
+            e = existing_map[key]
+            e.count = rec["count"]
+            e.uploaded_at = now
+            e.uploaded_by = user_id
+            session.add(e)
         else:
             session.add(ComplaintData(
-                group_id=gid,
-                year=rec["year"],
-                month=rec["month"],
-                keyword=rec["keyword"],
-                count=rec["count"],
-                uploaded_at=datetime.utcnow(),
-                uploaded_by=user_id,
+                group_id=gid, year=rec["year"], month=rec["month"],
+                keyword=rec["keyword"], count=rec["count"],
+                uploaded_at=now, uploaded_by=user_id,
             ))
             count += 1
     return count
