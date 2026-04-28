@@ -31,32 +31,46 @@ async def get_participation_summary(
     eff_group  = perm["group_id"]  if perm["group_id"]  is not None else group_id
     eff_branch = perm["branch_id"] if perm["branch_id"] is not None else branch_id
 
-    period = months_in_range(start_year, start_month, end_year, end_month)
+    start_ym = start_year * 100 + start_month
+    end_ym   = end_year * 100 + end_month
+    period   = months_in_range(start_year, start_month, end_year, end_month)
+
+    def _base_select():
+        return select(
+            ParticipationData.year, ParticipationData.month,
+            func.sum(ParticipationData.target_count).label("target"),
+            func.sum(ParticipationData.participant_count).label("participant"),
+        ).where(
+            (ParticipationData.year * 100 + ParticipationData.month) >= start_ym,
+            (ParticipationData.year * 100 + ParticipationData.month) <= end_ym,
+        )
+
+    base_q = _base_select().group_by(ParticipationData.year, ParticipationData.month)
+
+    filt_q = _base_select()
+    if eff_group:
+        filt_q = filt_q.join(Branch, Branch.id == ParticipationData.branch_id).where(Branch.group_id == eff_group)
+    elif eff_branch:
+        filt_q = filt_q.where(ParticipationData.branch_id == eff_branch)
+    filt_q = filt_q.group_by(ParticipationData.year, ParticipationData.month)
+
+    base_map = {(r.year, r.month): r for r in (await session.exec(base_q)).all()}
+    filt_map = {(r.year, r.month): r for r in (await session.exec(filt_q)).all()}
+
     baseline_series = []
     filtered_series = []
 
     for yr, mo in period:
         label = f"{yr}-{mo:02d}"
+        b = base_map.get((yr, mo))
+        f = filt_map.get((yr, mo))
+        rb_t = (b.target or 0) if b else 0
+        rb_p = (b.participant or 0) if b else 0
+        rf_t = (f.target or 0) if f else 0
+        rf_p = (f.participant or 0) if f else 0
+        baseline_series.append({"x": label, "rate": _rate(rb_t, rb_p)})
+        filtered_series.append({"x": label, "rate": _rate(rf_t, rf_p)})
 
-        base_filter = (ParticipationData.year == yr, ParticipationData.month == mo)
-        rb_t = await session.scalar(select(func.sum(ParticipationData.target_count)).where(*base_filter))
-        rb_p = await session.scalar(select(func.sum(ParticipationData.participant_count)).where(*base_filter))
-
-        filt_q_t = select(func.sum(ParticipationData.target_count)).where(*base_filter)
-        filt_q_p = select(func.sum(ParticipationData.participant_count)).where(*base_filter)
-        if eff_group:
-            filt_q_t = filt_q_t.join(Branch, Branch.id == ParticipationData.branch_id).where(Branch.group_id == eff_group)
-            filt_q_p = filt_q_p.join(Branch, Branch.id == ParticipationData.branch_id).where(Branch.group_id == eff_group)
-        elif eff_branch:
-            filt_q_t = filt_q_t.where(ParticipationData.branch_id == eff_branch)
-            filt_q_p = filt_q_p.where(ParticipationData.branch_id == eff_branch)
-        rf_t = await session.scalar(filt_q_t)
-        rf_p = await session.scalar(filt_q_p)
-
-        baseline_series.append({"x": label, "rate": _rate(rb_t or 0, rb_p or 0)})
-        filtered_series.append({"x": label, "rate": _rate(rf_t or 0, rf_p or 0)})
-
-    # 기간 평균 스코어카드
     base_rates = [s["rate"] for s in baseline_series if s["rate"] is not None]
     filt_rates = [s["rate"] for s in filtered_series if s["rate"] is not None]
     baseline_avg = round(sum(base_rates) / len(base_rates), 1) if base_rates else None

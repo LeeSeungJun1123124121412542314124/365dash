@@ -18,33 +18,30 @@ CATEGORY_KEY = {
     "etc":          "etc_complaint",
 }
 
+_EMPTY = {
+    "total": 0,
+    "surgery_complaint": 0,
+    "lams_complaint": 0,
+    "lams_surgery_complaint": 0,
+    "etc_complaint": 0,
+}
 
-async def _sum_by_group(
-    session: AsyncSession,
-    year: int,
-    month: int,
-    eff_group: Optional[int],
-) -> dict:
-    """월별 불만 개수를 대분류별로 집계."""
-    q = (
-        select(
-            BranchGroup.category.label("cat"),
-            func.coalesce(func.sum(ComplaintData.count), 0).label("cnt"),
-        )
-        .join(BranchGroup, BranchGroup.id == ComplaintData.group_id)
-        .where(ComplaintData.year == year, ComplaintData.month == month)
-    )
-    if eff_group:
-        q = q.where(ComplaintData.group_id == eff_group)
-    q = q.group_by(BranchGroup.category)
 
-    rows = (await session.exec(q)).all()
-    result = {"total": 0, "surgery_complaint": 0, "lams_complaint": 0,
-              "lams_surgery_complaint": 0, "etc_complaint": 0}
+def _rows_to_map(rows) -> dict:
+    result = {}
     for r in rows:
-        key = CATEGORY_KEY.get(r.cat, "etc_complaint")
-        result[key] = int(r.cnt)
-        result["total"] += int(r.cnt)
+        key = (r.year, r.month)
+        if key not in result:
+            result[key] = {
+                "total": 0,
+                "surgery_complaint": 0,
+                "lams_complaint": 0,
+                "lams_surgery_complaint": 0,
+                "etc_complaint": 0,
+            }
+        cat_key = CATEGORY_KEY.get(r.cat, "etc_complaint")
+        result[key][cat_key] = int(r.cnt)
+        result[key]["total"] += int(r.cnt)
     return result
 
 
@@ -62,18 +59,40 @@ async def get_complaint_summary(
     perm = get_data_filter(user)
     eff_group = perm["group_id"] if perm["group_id"] is not None else group_id
 
-    period = months_in_range(start_year, start_month, end_year, end_month)
+    start_ym = start_year * 100 + start_month
+    end_ym   = end_year * 100 + end_month
+    period   = months_in_range(start_year, start_month, end_year, end_month)
+
+    def _build_q(eff_grp):
+        q = (
+            select(
+                ComplaintData.year, ComplaintData.month,
+                BranchGroup.category.label("cat"),
+                func.coalesce(func.sum(ComplaintData.count), 0).label("cnt"),
+            )
+            .join(BranchGroup, BranchGroup.id == ComplaintData.group_id)
+            .where(
+                (ComplaintData.year * 100 + ComplaintData.month) >= start_ym,
+                (ComplaintData.year * 100 + ComplaintData.month) <= end_ym,
+            )
+        )
+        if eff_grp:
+            q = q.where(ComplaintData.group_id == eff_grp)
+        return q.group_by(ComplaintData.year, ComplaintData.month, BranchGroup.category)
+
+    base_map = _rows_to_map((await session.exec(_build_q(None))).all())
+    filt_map = _rows_to_map((await session.exec(_build_q(eff_group))).all())
+
     baseline_series = []
     filtered_series = []
 
     for year, month in period:
         label = f"{year}-{month:02d}"
-        base = await _sum_by_group(session, year, month, None)
-        filt = await _sum_by_group(session, year, month, eff_group)
+        base = base_map.get((year, month), _EMPTY)
+        filt = filt_map.get((year, month), _EMPTY)
         baseline_series.append({"x": label, **base})
         filtered_series.append({"x": label, **filt})
 
-    # 기간 합계 스코어카드
     return {
         "scorecard": {
             "baseline_total": sum(s["total"] for s in baseline_series),

@@ -11,48 +11,24 @@ from app.services.month_window import months_in_range
 
 router = APIRouter(prefix="/praise", tags=["칭찬"])
 
-# BranchGroup category → 소계 키 매핑
 CATEGORY_KEY = {
-    "hospital":      "surgery",       # 병원급 (G1)
-    "lams_surgery":  "lams_surgery",  # 람스+시술 (G2)
-    "lams":          "lams",          # 람스 (G3)
+    "hospital":      "surgery",
+    "lams_surgery":  "lams_surgery",
+    "lams":          "lams",
 }
 
-
-def _apply_filter(q, eff_group, eff_branch):
-    if eff_group:
-        return q.where(Branch.group_id == eff_group)
-    elif eff_branch:
-        return q.where(PraiseData.branch_id == eff_branch)
-    return q
+_EMPTY = {"total": 0, "surgery": 0, "lams": 0, "lams_surgery": 0}
 
 
-async def _count_by_group(
-    session: AsyncSession,
-    year: int,
-    month: int,
-    eff_group: Optional[int],
-    eff_branch: Optional[int],
-) -> dict:
-    """월별 칭찬 건수를 지점군별로 집계."""
-    q = (
-        select(
-            BranchGroup.category.label("cat"),
-            func.coalesce(func.sum(PraiseData.count), 0).label("cnt"),
-        )
-        .join(Branch, Branch.id == PraiseData.branch_id)
-        .join(BranchGroup, BranchGroup.id == Branch.group_id)
-        .where(PraiseData.year == year, PraiseData.month == month)
-    )
-    q = _apply_filter(q, eff_group, eff_branch)
-    q = q.group_by(BranchGroup.category)
-
-    rows = (await session.exec(q)).all()
-    result = {"total": 0, "surgery": 0, "lams": 0, "lams_surgery": 0}
+def _rows_to_map(rows) -> dict:
+    result = {}
     for r in rows:
-        key = CATEGORY_KEY.get(r.cat, "lams")
-        result[key] = int(r.cnt)
-        result["total"] += int(r.cnt)
+        key = (r.year, r.month)
+        if key not in result:
+            result[key] = {"total": 0, "surgery": 0, "lams": 0, "lams_surgery": 0}
+        cat_key = CATEGORY_KEY.get(r.cat, "lams")
+        result[key][cat_key] = int(r.cnt)
+        result[key]["total"] += int(r.cnt)
     return result
 
 
@@ -71,24 +47,43 @@ async def get_praise_summary(
     eff_group  = perm["group_id"]  if perm["group_id"]  is not None else group_id
     eff_branch = perm["branch_id"] if perm["branch_id"] is not None else branch_id
 
-    period = months_in_range(start_year, start_month, end_year, end_month)
+    start_ym = start_year * 100 + start_month
+    end_ym   = end_year * 100 + end_month
+    period   = months_in_range(start_year, start_month, end_year, end_month)
+
+    def _build_q(eff_grp, eff_br):
+        q = (
+            select(
+                PraiseData.year, PraiseData.month,
+                BranchGroup.category.label("cat"),
+                func.coalesce(func.sum(PraiseData.count), 0).label("cnt"),
+            )
+            .join(Branch, Branch.id == PraiseData.branch_id)
+            .join(BranchGroup, BranchGroup.id == Branch.group_id)
+            .where(
+                (PraiseData.year * 100 + PraiseData.month) >= start_ym,
+                (PraiseData.year * 100 + PraiseData.month) <= end_ym,
+            )
+        )
+        if eff_grp:
+            q = q.where(Branch.group_id == eff_grp)
+        elif eff_br:
+            q = q.where(PraiseData.branch_id == eff_br)
+        return q.group_by(PraiseData.year, PraiseData.month, BranchGroup.category)
+
+    base_map = _rows_to_map((await session.exec(_build_q(None, None))).all())
+    filt_map = _rows_to_map((await session.exec(_build_q(eff_group, eff_branch))).all())
+
     baseline_series = []
     filtered_series = []
 
     for year, month in period:
         label = f"{year}-{month:02d}"
-        base = await _count_by_group(session, year, month, None, None)
-        filt = await _count_by_group(session, year, month, eff_group, eff_branch)
-        baseline_series.append({"x": label, "total": base["total"],
-                                 "surgery": base["surgery"],
-                                 "lams": base["lams"],
-                                 "lams_surgery": base["lams_surgery"]})
-        filtered_series.append({"x": label, "total": filt["total"],
-                                 "surgery": filt["surgery"],
-                                 "lams": filt["lams"],
-                                 "lams_surgery": filt["lams_surgery"]})
+        base = base_map.get((year, month), _EMPTY)
+        filt = filt_map.get((year, month), _EMPTY)
+        baseline_series.append({"x": label, **base})
+        filtered_series.append({"x": label, **filt})
 
-    # 기간 합계 스코어카드
     return {
         "scorecard": {
             "baseline_total": sum(s["total"] for s in baseline_series),
