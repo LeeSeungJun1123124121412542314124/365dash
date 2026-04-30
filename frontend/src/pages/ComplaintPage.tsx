@@ -216,31 +216,31 @@ export default function ComplaintPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-xs border-collapse">
                   <thead>
-                    <tr className="bg-sky-100 border-b border-sky-200">
-                      <th className="px-3 py-3 text-center text-xs font-bold text-gray-700 whitespace-nowrap border-r border-sky-200">연도</th>
-                      <th className="px-3 py-3 text-center text-xs font-bold text-gray-700 whitespace-nowrap border-r border-sky-200">월</th>
-                      <th className="px-3 py-3 text-center text-xs font-bold text-gray-700 whitespace-nowrap border-r border-sky-200">대분류</th>
+                    <tr className="bg-gray-50 border-b border-gray-100">
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">연도</th>
+                      <th className="px-3 py-3 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">월</th>
+                      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">대분류</th>
                       {KEYWORDS.map((k) => (
-                        <th key={k} className="px-3 py-3 text-center text-xs font-bold text-gray-700 whitespace-nowrap border-r border-sky-200">
+                        <th key={k} className="px-3 py-3 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">
                           {k}
                         </th>
                       ))}
-                      <th className="px-3 py-3 text-center text-xs font-bold text-gray-700 whitespace-nowrap">총개수<br />(계산)</th>
+                      <th className="px-3 py-3 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">총개수</th>
                     </tr>
                   </thead>
                   <tbody>
                     {pivotedKeywordRows.map((row: any, i: number) => (
-                      <tr key={i} className="border-b border-gray-100 hover:bg-violet-50/40 transition-colors">
-                        <td className="px-3 py-2.5 text-center text-gray-600 border-r border-gray-100">{row.year}</td>
-                        <td className="px-3 py-2.5 text-center text-gray-600 border-r border-gray-100">{row.month}월</td>
-                        <td className="px-3 py-2.5 font-medium text-gray-700 border-r border-gray-100">{row.group_name}</td>
+                      <tr key={i} className="border-b border-gray-50 hover:bg-violet-50/30 transition-colors">
+                        <td className="px-4 py-2.5 text-gray-600 whitespace-nowrap">{row.year}</td>
+                        <td className="px-3 py-2.5 text-center text-gray-600 whitespace-nowrap">{row.month}월</td>
+                        <td className="px-3 py-2.5 font-medium text-gray-700 whitespace-nowrap">{row.group_name}</td>
                         {KEYWORDS.map((k) => (
-                          <td key={k} className="px-3 py-2.5 text-center text-gray-700 border-r border-gray-100">
-                            {(row[k] ?? 0) > 0 ? row[k] : <span className="text-gray-300">—</span>}
+                          <td key={k} className="px-3 py-2.5 text-center text-gray-700">
+                            {(row[k] ?? 0) > 0 ? row[k].toLocaleString() : <span className="text-gray-300">—</span>}
                           </td>
                         ))}
-                        <td className="px-3 py-2.5 text-center font-bold text-red-600">
-                          {row.total > 0 ? row.total : <span className="text-gray-300">—</span>}
+                        <td className="px-3 py-2.5 text-center font-semibold text-gray-800">
+                          {row.total > 0 ? row.total.toLocaleString() : <span className="text-gray-300">—</span>}
                         </td>
                       </tr>
                     ))}
