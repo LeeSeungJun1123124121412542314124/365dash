@@ -46,7 +46,8 @@ app.include_router(users.router, prefix="/api")
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "version": "1.0.0"}
+    # 1.0.1: 대분류+중분류 동시 선택 시 중분류 필터 우선 적용 버그 수정
+    return {"status": "ok", "version": "1.0.1-filter-fix"}
 
 
 # ──────────────────────────────────────────
