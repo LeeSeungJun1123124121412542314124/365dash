@@ -48,10 +48,11 @@ async def get_participation_summary(
     base_q = _base_select().group_by(ParticipationData.year, ParticipationData.month)
 
     filt_q = _base_select()
-    if eff_group:
-        filt_q = filt_q.join(Branch, Branch.id == ParticipationData.branch_id).where(Branch.group_id == eff_group)
-    elif eff_branch:
+    # 중분류(branch)가 더 구체적이므로 우선 적용. 둘 다 있으면 branch만 사용해도 결과 동일 (branch는 group의 자식).
+    if eff_branch:
         filt_q = filt_q.where(ParticipationData.branch_id == eff_branch)
+    elif eff_group:
+        filt_q = filt_q.join(Branch, Branch.id == ParticipationData.branch_id).where(Branch.group_id == eff_group)
     filt_q = filt_q.group_by(ParticipationData.year, ParticipationData.month)
 
     base_map = {(r.year, r.month): r for r in (await session.exec(base_q)).all()}

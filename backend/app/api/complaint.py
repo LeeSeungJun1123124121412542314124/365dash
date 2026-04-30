@@ -6,7 +6,7 @@ from sqlmodel import select, func
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.deps import get_current_user, get_data_filter, get_session
-from app.db.models import BranchGroup, ComplaintData
+from app.db.models import Branch, BranchGroup, ComplaintData
 from app.services.month_window import months_in_range
 
 router = APIRouter(prefix="/complaint", tags=["불만"])
@@ -58,6 +58,13 @@ async def get_complaint_summary(
 ):
     perm = get_data_filter(user)
     eff_group = perm["group_id"] if perm["group_id"] is not None else group_id
+    eff_branch = perm["branch_id"] if perm["branch_id"] is not None else branch_id
+
+    # 불만 데이터는 대분류(group) 단위 집계 — 중분류만 들어오면 그 branch가 속한 group으로 변환.
+    if eff_branch and not eff_group:
+        br = await session.get(Branch, eff_branch)
+        if br:
+            eff_group = br.group_id
 
     start_ym = start_year * 100 + start_month
     end_ym   = end_year * 100 + end_month
@@ -121,6 +128,13 @@ async def get_complaint_keywords(
     """키워드별 불만 집계 테이블 (기간 범위 필터)."""
     perm = get_data_filter(user)
     eff_group = perm["group_id"] if perm["group_id"] is not None else group_id
+    eff_branch = perm["branch_id"] if perm["branch_id"] is not None else branch_id
+
+    # 불만 데이터는 대분류(group) 단위 집계 — 중분류만 들어오면 그 branch가 속한 group으로 변환.
+    if eff_branch and not eff_group:
+        br = await session.get(Branch, eff_branch)
+        if br:
+            eff_group = br.group_id
 
     start_ym = start_year * 100 + start_month
     end_ym = end_year * 100 + end_month

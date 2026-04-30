@@ -65,10 +65,11 @@ async def get_praise_summary(
                 (PraiseData.year * 100 + PraiseData.month) <= end_ym,
             )
         )
-        if eff_grp:
-            q = q.where(Branch.group_id == eff_grp)
-        elif eff_br:
+        # 중분류(branch)가 더 구체적이므로 우선 적용. 둘 다 있으면 branch만 사용해도 결과 동일 (branch는 group의 자식).
+        if eff_br:
             q = q.where(PraiseData.branch_id == eff_br)
+        elif eff_grp:
+            q = q.where(Branch.group_id == eff_grp)
         return q.group_by(PraiseData.year, PraiseData.month, BranchGroup.category)
 
     base_map = _rows_to_map((await session.exec(_build_q(None, None))).all())
