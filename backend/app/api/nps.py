@@ -49,10 +49,11 @@ async def get_nps_summary(
             (NpsData.year * 100 + NpsData.month) <= end_ym,
         )
         if filtered:
-            if eff_group:
-                q = q.join(Branch, Branch.id == NpsData.branch_id).where(Branch.group_id == eff_group)
-            elif eff_branch:
+            # 중분류(branch)가 더 구체적이므로 우선 적용. 둘 다 있으면 branch만 사용해도 결과 동일 (branch는 group의 자식).
+            if eff_branch:
                 q = q.where(NpsData.branch_id == eff_branch)
+            elif eff_group:
+                q = q.join(Branch, Branch.id == NpsData.branch_id).where(Branch.group_id == eff_group)
         return q.group_by(NpsData.year, NpsData.month)
 
     base_map = {(r.year, r.month): r for r in (await session.exec(_build_q(False))).all()}
