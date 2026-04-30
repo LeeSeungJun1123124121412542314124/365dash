@@ -239,7 +239,7 @@ export default function ComplaintPage() {
                             {(row[k] ?? 0) > 0 ? row[k].toLocaleString() : <span className="text-gray-300">—</span>}
                           </td>
                         ))}
-                        <td className="px-3 py-2.5 text-center font-semibold text-gray-800">
+                        <td className="px-3 py-2.5 text-center font-bold text-red-600">
                           {row.total > 0 ? row.total.toLocaleString() : <span className="text-gray-300">—</span>}
                         </td>
                       </tr>
