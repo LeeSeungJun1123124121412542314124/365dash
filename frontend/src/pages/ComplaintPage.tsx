@@ -44,6 +44,31 @@ export default function ComplaintPage() {
   const months = baselineSeries.map((b: any) => b.x);
   const needTableScroll = months.length > 24;
 
+  // 불만 키워드 피벗: (연,월,대분류) 단위로 키워드를 컬럼으로 재배치
+  const KEYWORDS = [
+    "주차", "안내 응대부족", "대기관련", "불친절",
+    "시스템불만", "개인정보", "환경불만", "기타",
+  ];
+  const pivotMap = new Map<string, any>();
+  for (const r of keywordRows) {
+    const key = `${r.year}-${r.month}-${r.group_name}`;
+    if (!pivotMap.has(key)) {
+      const empty: any = { year: r.year, month: r.month, group_name: r.group_name, total: 0 };
+      KEYWORDS.forEach((k) => (empty[k] = 0));
+      pivotMap.set(key, empty);
+    }
+    const row = pivotMap.get(key);
+    if (KEYWORDS.includes(r.keyword)) {
+      row[r.keyword] = (row[r.keyword] ?? 0) + (r.count ?? 0);
+    } else {
+      row["기타"] = (row["기타"] ?? 0) + (r.count ?? 0);
+    }
+    row.total += r.count ?? 0;
+  }
+  const pivotedKeywordRows = Array.from(pivotMap.values()).sort(
+    (a, b) => b.year - a.year || b.month - a.month || a.group_name.localeCompare(b.group_name),
+  );
+
   const TABLE_ROWS = [
     { label: "전체 불만총계", key: "total", source: baselineSeries },
     { label: `${filterLabel} 불만총계`, key: "total", source: filteredSeries },
@@ -185,35 +210,37 @@ export default function ComplaintPage() {
             </div>
             {keywordLoading ? (
               <div className="p-8 text-center text-sm text-gray-400">불러오는 중...</div>
-            ) : keywordRows.length === 0 ? (
+            ) : pivotedKeywordRows.length === 0 ? (
               <div className="p-8 text-center text-sm text-gray-400">데이터가 없습니다.</div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full text-xs border-collapse">
                   <thead>
-                    <tr className="bg-gray-50 border-b border-gray-100">
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">연도</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">월</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">대분류</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">불만키워드</th>
-                      <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">개수</th>
+                    <tr className="bg-sky-100 border-b border-sky-200">
+                      <th className="px-3 py-3 text-center text-xs font-bold text-gray-700 whitespace-nowrap border-r border-sky-200">연도</th>
+                      <th className="px-3 py-3 text-center text-xs font-bold text-gray-700 whitespace-nowrap border-r border-sky-200">월</th>
+                      <th className="px-3 py-3 text-center text-xs font-bold text-gray-700 whitespace-nowrap border-r border-sky-200">대분류</th>
+                      {KEYWORDS.map((k) => (
+                        <th key={k} className="px-3 py-3 text-center text-xs font-bold text-gray-700 whitespace-nowrap border-r border-sky-200">
+                          {k}
+                        </th>
+                      ))}
+                      <th className="px-3 py-3 text-center text-xs font-bold text-gray-700 whitespace-nowrap">총개수<br />(계산)</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {keywordRows.map((row: any, i: number) => (
-                      <tr key={i} className="border-b border-gray-50 hover:bg-violet-50/40 transition-colors">
-                        <td className="px-4 py-3 text-gray-600">{row.year}</td>
-                        <td className="px-4 py-3 text-gray-600">{row.month}월</td>
-                        <td className="px-4 py-3 font-medium text-gray-700">{row.group_name}</td>
-                        <td className="px-4 py-3 text-gray-700">{row.keyword}</td>
-                        <td className="px-4 py-3 text-center">
-                          {(row.count ?? 0) > 0 ? (
-                            <span className="inline-flex items-center justify-center min-w-6 h-6 px-2 rounded-full bg-red-100 text-red-600 text-xs font-semibold">
-                              {row.count}
-                            </span>
-                          ) : (
-                            <span className="text-gray-300">—</span>
-                          )}
+                    {pivotedKeywordRows.map((row: any, i: number) => (
+                      <tr key={i} className="border-b border-gray-100 hover:bg-violet-50/40 transition-colors">
+                        <td className="px-3 py-2.5 text-center text-gray-600 border-r border-gray-100">{row.year}</td>
+                        <td className="px-3 py-2.5 text-center text-gray-600 border-r border-gray-100">{row.month}월</td>
+                        <td className="px-3 py-2.5 font-medium text-gray-700 border-r border-gray-100">{row.group_name}</td>
+                        {KEYWORDS.map((k) => (
+                          <td key={k} className="px-3 py-2.5 text-center text-gray-700 border-r border-gray-100">
+                            {(row[k] ?? 0) > 0 ? row[k] : <span className="text-gray-300">—</span>}
+                          </td>
+                        ))}
+                        <td className="px-3 py-2.5 text-center font-bold text-red-600">
+                          {row.total > 0 ? row.total : <span className="text-gray-300">—</span>}
                         </td>
                       </tr>
                     ))}
