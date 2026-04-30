@@ -3,7 +3,7 @@ import { ThumbsDown } from "lucide-react";
 import ScoreCard from "../components/ScoreCard";
 import FilterBar, { type FilterValue } from "../components/FilterBar";
 import ScrollableBarChart from "../components/ScrollableBarChart";
-import { useComplaintSummary, useComplaintKeywords, useGroups, useBranches } from "../api/hooks";
+import { useComplaintSummary, useComplaintKeywords, useGroups } from "../api/hooks";
 import { npsDefaultFilter, seriesToDualChart } from "../lib/chartUtils";
 
 
@@ -13,10 +13,9 @@ export default function ComplaintPage() {
   const [chartType, setChartType] = useState<"bar" | "line">("bar");
 
   const { data: groups = [] } = useGroups();
-  const { data: branches = [] } = useBranches(filter.groupId);
+  // 불만은 대분류 단위 집계 — 중분류는 사용하지 않음
   const selectedGroup = groups.find((g) => g.id === filter.groupId);
-  const selectedBranch = branches.find((b) => b.id === filter.branchId);
-  const filterLabel = selectedBranch?.name ?? selectedGroup?.name ?? "필터";
+  const filterLabel = selectedGroup?.name ?? "필터";
 
   const { data: summaryData, isLoading: summaryLoading } = useComplaintSummary({
     start_year: filter.startYear,
@@ -24,7 +23,7 @@ export default function ComplaintPage() {
     end_year: filter.endYear,
     end_month: filter.endMonth,
     group_id: filter.groupId,
-    branch_id: filter.branchId,
+    branch_id: null,
   });
 
   const { data: keywordData, isLoading: keywordLoading } = useComplaintKeywords({
@@ -33,7 +32,7 @@ export default function ComplaintPage() {
     end_year: filter.endYear,
     end_month: filter.endMonth,
     group_id: filter.groupId,
-    branch_id: filter.branchId,
+    branch_id: null,
   });
 
   const scorecard = summaryData?.scorecard ?? {};
@@ -69,7 +68,7 @@ export default function ComplaintPage() {
 
       {tab === "overview" && (
         <>
-          <FilterBar value={filter} onChange={setFilter} />
+          <FilterBar value={filter} onChange={setFilter} showBranch={false} />
 
           {/* 스코어카드 — 전체값 + 필터값 한 줄 */}
           <div className="grid grid-cols-2 gap-4">
@@ -177,7 +176,7 @@ export default function ComplaintPage() {
 
       {tab === "keywords" && (
         <>
-          <FilterBar value={filter} onChange={setFilter} showNpsLevel={false} />
+          <FilterBar value={filter} onChange={setFilter} showBranch={false} showNpsLevel={false} />
 
           <div className="card overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-100">
