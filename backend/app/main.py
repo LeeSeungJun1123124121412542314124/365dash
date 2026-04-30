@@ -2,8 +2,9 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api import auth, branches, complaint, dashboard, nps, participation, praise, upload, users
@@ -53,7 +54,19 @@ async def health():
 # ──────────────────────────────────────────
 # 프론트엔드 정적 파일 서빙 (빌드 후)
 # Railway 운영: frontend/dist 가 존재할 때만 마운트
+# SPA 라우팅 지원 — /assets 등 정적 파일 외 모든 경로는 index.html로 폴백
 # ──────────────────────────────────────────
 _frontend_dist = Path(__file__).parent.parent.parent / "frontend" / "dist"
 if _frontend_dist.exists():
-    app.mount("/", StaticFiles(directory=str(_frontend_dist), html=True), name="frontend")
+    app.mount("/assets", StaticFiles(directory=str(_frontend_dist / "assets")), name="assets")
+
+    @app.get("/{full_path:path}")
+    async def spa_fallback(full_path: str):
+        # API 경로는 위 라우터에서 매칭됨 — 여기 도달하면 404로 처리
+        if full_path.startswith("api/"):
+            raise HTTPException(status_code=404, detail="Not Found")
+        # 실제 정적 파일 (favicon, robots.txt 등)이 있으면 그 파일을, 없으면 index.html
+        candidate = _frontend_dist / full_path
+        if full_path and candidate.is_file():
+            return FileResponse(candidate)
+        return FileResponse(_frontend_dist / "index.html")
